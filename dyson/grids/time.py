@@ -22,30 +22,47 @@ if TYPE_CHECKING:
 class BaseTimeGrid(BaseGrid):
     """Base class for time grids."""
 
-    def evaluate_lehmann(
-        self,
-        lehmann: Lehmann,
-        reduction: Reduction = Reduction.NONE,
-        component: Component = Component.FULL,
-        **kwargs: Any,
-    ) -> Dynamic[BaseTimeGrid]:
-        r"""Evaluate a Lehmann representation on the grid.
-
-        Args:
-            lehmann: Lehmann representation to evaluate.
-            reduction: The reduction of the dynamic representation.
-            component: The component of the dynamic representation.
-            kwargs: Additional keyword arguments for the resolvent.
-
-        Returns:
-            Lehmann representation, realised on the grid.
-        """
-        raise NotImplementedError
-
     @property
     def domain(self) -> str:
         """Return the domain of the grid."""
         return "time"
+
+    @abstractmethod
+    def propagator(  # noqa: D417
+        self, energies: Array, chempot: float | Array, **kwargs: Any
+    ) -> Array:
+        """Get the propagator of a Lehmann representation on the grid.
+
+        Args:
+            energies: Energies of the poles.
+            chempot: Chemical potential.
+
+        Returns:
+            Propagator of the grid.
+        """
+        pass
+
+    def _lehmann_kernel(
+        self,
+        energies: Array,
+        chempot: float | Array,
+        **kwargs: Any,
+    ) -> Array:
+        """Get the kernel of a Lehmann representation on the grid.
+
+        Args:
+            energies: Energies of the poles.
+            chempot: Chemical potential.
+            kwargs: Additional keyword arguments for the resolvent.
+
+        Returns:
+            Kernel of a Lehmann representation on the grid.
+
+        Note:
+            The kernel is a hook to generalise the resolvent or propagator, depending on whether
+            the grid is in the frequency or time domain.
+        """
+        return self.propagator(energies, chempot, **kwargs)
 
 
 class RealTimeGrid(BaseTimeGrid):
@@ -63,6 +80,52 @@ class RealTimeGrid(BaseTimeGrid):
         self._points = np.asarray(points)
         self._weights = np.asarray(weights) if weights is not None else None
         self.set_options(**kwargs)
+
+    @staticmethod
+    def _heaviside(points: Array, energies: Array, ordering: Ordering) -> Array:
+        """Get the Heaviside term with complex phase."""
+        ordering = Ordering(ordering)
+        theta: Array
+        if ordering == ordering.ORDERED:
+            pos = -1.0j * (points > 0).astype(np.float64) + 0.5 * (points == 0).astype(np.float64)
+            neg = 1.0j * (points < 0).astype(np.float64) + 0.5 * (points == 0).astype(np.float64)
+            occ = (energies < 0).astype(np.float64)
+            vir = 1.0 - occ
+            theta = pos * occ + neg * vir
+        elif ordering == ordering.ADVANCED:
+            pos = -1.0j * (points > 0).astype(np.float64) + 0.5 * (points == 0).astype(np.float64)
+            theta = pos
+        elif ordering == ordering.RETARDED:
+            neg = 1.0j * (points < 0).astype(np.float64) + 0.5 * (points == 0).astype(np.float64)
+            theta = neg
+        else:
+            ordering.raise_invalid_representation()
+        return theta
+
+    def propagator(  # noqa: D417
+        self,
+        energies: Array,
+        chempot: float | Array,
+        ordering: Ordering = Ordering.ORDERED,
+        **kwargs: Any,
+    ) -> Array:
+        """Get the propagator of a Lehmann representation on the grid.
+
+        Args:
+            energies: Energies of the poles.
+            chempot: Chemical potential.
+            ordering: Time ordering of the resolvent.
+
+        Returns:
+            Propagator on the grid.
+        """
+        if kwargs:
+            raise TypeError(f"propagator() got unexpected keyword argument: {next(iter(kwargs))}")
+        grid = np.expand_dims(self.points, axis=tuple(range(1, energies.ndim + 1)))
+        energies = np.expand_dims(energies, axis=0)
+        phase = np.exp(-1.0j * grid * energies)
+        theta = self._heaviside(grid, energies - chempot, ordering)
+        return phase * theta
 
     def evaluate_tail(
         self,
@@ -123,6 +186,33 @@ class ImaginaryTimeGrid(BaseTimeGrid):
         self._weights = np.asarray(weights) if weights is not None else None
         self.set_options(**kwargs)
 
+    def propagator(  # noqa: D417
+        self,
+        energies: Array,
+        chempot: float | Array,
+        ordering: Ordering = Ordering.ORDERED,
+        **kwargs: Any,
+    ) -> Array:
+        """Get the propagator of a Lehmann representation on the grid.
+
+        Args:
+            energies: Energies of the poles.
+            chempot: Chemical potential.
+            ordering: Time ordering of the resolvent.
+
+        Returns:
+            Propagator on the grid.
+        """
+        if kwargs:
+            raise TypeError(f"propagator() got unexpected keyword argument: {next(iter(kwargs))}")
+        grid = np.expand_dims(self.points, axis=tuple(range(1, energies.ndim + 1)))
+        energies = np.expand_dims(energies, axis=0)
+        occ = ((energies - chempot) < 0).astype(np.float64)
+        vir = 1.0 - occ
+        propagator = np.exp(-energies * (grid - self.beta)) * occ
+        propagator -= np.exp(-energies * grid) * vir
+        return propagator
+
     def evaluate_tail(
         self,
         moments: Iterable[Array],
@@ -162,7 +252,7 @@ class ImaginaryTimeGrid(BaseTimeGrid):
         return self.points[-1] - self.points[0]
 
     @classmethod
-    def from_uniform(cls, num: int, beta: float) -> RealTimeGrid:
+    def from_uniform(cls, num: int, beta: float) -> ImaginaryTimeGrid:
         """Create a uniform real time grid.
 
         Args:

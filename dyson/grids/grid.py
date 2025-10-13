@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 from dyson import numpy as np
+from dyson import util
 from dyson.representations.enums import Component, Reduction, RepresentationEnum, Ordering
 
 if TYPE_CHECKING:
@@ -52,23 +53,93 @@ class BaseGrid(ABC):
             setattr(self, key, val)
 
     @abstractmethod
+    def _lehmann_kernel(
+        self,
+        energies: Array,
+        chempot: float | Array,
+        **kwargs: Any,
+    ) -> Array:
+        """Get the kernel of a Lehmann representation on the grid.
+
+        Args:
+            energies: Energies of the poles.
+            chempot: Chemical potential.
+            kwargs: Additional keyword arguments for the resolvent.
+
+        Returns:
+            Kernel of a Lehmann representation on the grid.
+
+        Note:
+            The kernel is a hook to generalise the resolvent or propagator, depending on whether
+            the grid is in the frequency or time domain.
+        """
+        pass
+
     def evaluate_lehmann(
         self,
         lehmann: Lehmann,
         reduction: Reduction = Reduction.NONE,
         component: Component = Component.FULL,
+        **kwargs: Any,
     ) -> Dynamic[Any]:
-        """Evaluate a Lehmann representation on the grid.
+        r"""Evaluate a Lehmann representation on the grid.
+
+        The imaginary frequency representation is defined as
+
+        .. math::
+            \sum_{k} \frac{v_{pk} u_{qk}^*}{i \omega - \epsilon_k},
+
+        and the real frequency representation is defined as
+
+        .. math::
+            \sum_{k} \frac{v_{pk} u_{qk}^*}{\omega - \epsilon_k \pm i \eta},
+
+        where :math:`\omega` is the frequency grid, :math:`\epsilon_k` are the poles, and the sign
+        of the broadening factor is determined by the time ordering.
 
         Args:
             lehmann: Lehmann representation to evaluate.
             reduction: The reduction of the dynamic representation.
             component: The component of the dynamic representation.
+            kwargs: Additional keyword arguments for the resolvent.
 
         Returns:
             Lehmann representation, realised on the grid.
         """
-        pass
+        from dyson.representations.dynamic import Dynamic  # noqa: PLC0415
+
+        left, right = lehmann.unpack_couplings()
+        resolvent = self._lehmann_kernel(lehmann.energies, lehmann.chempot, **kwargs)
+        reduction = Reduction(reduction)
+        component = Component(component)
+
+        # Get the input and output indices based on the reduction type
+        inp = "qk"
+        out = "wpq"
+        if reduction == reduction.NONE:
+            pass
+        elif reduction == reduction.DIAG:
+            inp = "pk"
+            out = "wp"
+        elif reduction == reduction.TRACE:
+            inp = "pk"
+            out = "w"
+        else:
+            reduction.raise_invalid_representation()
+
+        # Perform the downfolding operation
+        array = util.einsum(f"pk,{inp},wk->{out}", right, left.conj(), resolvent)
+
+        # Get the required component
+        # TODO: Save time by not evaluating the full array when not needed
+        if component == Component.REAL:
+            array = array.real
+        elif component == Component.IMAG:
+            array = array.imag
+
+        return Dynamic(
+            self, array, reduction=reduction, component=component, hermitian=lehmann.hermitian
+        )
 
     @abstractmethod
     def evaluate_tail(
