@@ -57,14 +57,14 @@ class BaseGrid(ABC):
         self,
         energies: Array,
         chempot: float | Array,
-        **kwargs: Any,
+        ordering: Ordering = Ordering.ORDERED,
     ) -> Array:
         """Get the kernel of a Lehmann representation on the grid.
 
         Args:
             energies: Energies of the poles.
             chempot: Chemical potential.
-            kwargs: Additional keyword arguments for the resolvent.
+            ordering: Time ordering of the resolvent or propagator.
 
         Returns:
             Kernel of a Lehmann representation on the grid.
@@ -80,7 +80,7 @@ class BaseGrid(ABC):
         lehmann: Lehmann,
         reduction: Reduction = Reduction.NONE,
         component: Component = Component.FULL,
-        **kwargs: Any,
+        ordering: Ordering = Ordering.ORDERED,
     ) -> Dynamic[Any]:
         r"""Evaluate a Lehmann representation on the grid.
 
@@ -101,7 +101,7 @@ class BaseGrid(ABC):
             lehmann: Lehmann representation to evaluate.
             reduction: The reduction of the dynamic representation.
             component: The component of the dynamic representation.
-            kwargs: Additional keyword arguments for the resolvent.
+            ordering: The time ordering of the Lehmann representation.
 
         Returns:
             Lehmann representation, realised on the grid.
@@ -109,9 +109,10 @@ class BaseGrid(ABC):
         from dyson.representations.dynamic import Dynamic  # noqa: PLC0415
 
         left, right = lehmann.unpack_couplings()
-        resolvent = self._lehmann_kernel(lehmann.energies, lehmann.chempot, **kwargs)
+        kernel = self._lehmann_kernel(lehmann.energies, lehmann.chempot, ordering=ordering)
         reduction = Reduction(reduction)
         component = Component(component)
+        ordering = Ordering(ordering)
 
         # Get the input and output indices based on the reduction type
         inp = "qk"
@@ -128,7 +129,7 @@ class BaseGrid(ABC):
             reduction.raise_invalid_representation()
 
         # Perform the downfolding operation
-        array = util.einsum(f"pk,{inp},wk->{out}", right, left.conj(), resolvent)
+        array = util.einsum(f"pk,{inp},wk->{out}", right, left.conj(), kernel)
 
         # Get the required component
         # TODO: Save time by not evaluating the full array when not needed
@@ -138,7 +139,12 @@ class BaseGrid(ABC):
             array = array.imag
 
         return Dynamic(
-            self, array, reduction=reduction, component=component, hermitian=lehmann.hermitian
+            self,
+            array,
+            reduction=reduction,
+            component=component,
+            ordering=ordering,
+            hermitian=lehmann.hermitian,
         )
 
     @abstractmethod

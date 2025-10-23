@@ -21,15 +21,17 @@ from dyson.grids.frequency import RealFrequencyGrid, GridRF
 from dyson.grids.frequency import ImaginaryFrequencyGrid, GridIF
 from dyson.grids.time import RealTimeGrid, GridRT
 from dyson.grids.time import ImaginaryTimeGrid, GridIT
-from dyson.grids.fourier import fourier_transform_imag, inverse_fourier_transform_imag
+from dyson.grids.fourier import fourier_transform_imag
 from dyson.grids.pade import analytic_continuation_freq_pade
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from dyson.representations import Dynamic
     from dyson.grids.grid import BaseGrid
 
 
-def transform(dynamic: Dynamic[BaseGrid], grid: BaseGrid) -> Dynamic[BaseGrid]:
+def transform(dynamic: Dynamic[BaseGrid], grid: BaseGrid, **kwargs: Any) -> Dynamic[BaseGrid]:
     """Transform a dynamic quantity to a new grid using either FFT or AC.
 
     Currently available transformations are:
@@ -51,6 +53,7 @@ def transform(dynamic: Dynamic[BaseGrid], grid: BaseGrid) -> Dynamic[BaseGrid]:
     Args:
         dynamic: The dynamic quantity to transform.
         grid: The grid to transform to.
+        **kwargs: Additional keyword arguments passed to the transformation function.
 
     Returns:
         The transformed dynamic quantity.
@@ -59,13 +62,13 @@ def transform(dynamic: Dynamic[BaseGrid], grid: BaseGrid) -> Dynamic[BaseGrid]:
         NotImplementedError: If the transformation is not implemented.
     """
     if isinstance(dynamic.grid, GridIT) and isinstance(grid, GridIF):
-        return fourier_transform_imag(dynamic, grid)
+        return fourier_transform_imag(dynamic, grid, **kwargs)
     if isinstance(dynamic.grid, GridIF) and isinstance(grid, GridIT):
-        return inverse_fourier_transform_imag(dynamic, grid)
+        return fourier_transform_imag(dynamic, grid, **kwargs)
     if isinstance(dynamic.grid, GridIF) and isinstance(grid, GridRF):
-        return analytic_continuation_freq_pade(dynamic, grid)
+        return analytic_continuation_freq_pade(dynamic, grid, **kwargs)
     if isinstance(dynamic.grid, GridRF) and isinstance(grid, GridIF):
-        return analytic_continuation_freq_pade(dynamic, grid)
+        return analytic_continuation_freq_pade(dynamic, grid, **kwargs)
     raise NotImplementedError(
         f"transformation between {type(dynamic.grid)} and {type(grid)} not implemented"
     )

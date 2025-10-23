@@ -71,14 +71,14 @@ class BaseFrequencyGrid(BaseGrid):
         self,
         energies: Array,
         chempot: float | Array,
-        **kwargs: Any,
+        ordering: Ordering = Ordering.ORDERED,
     ) -> Array:
         """Get the kernel of a Lehmann representation on the grid.
 
         Args:
             energies: Energies of the poles.
             chempot: Chemical potential.
-            kwargs: Additional keyword arguments for the resolvent.
+            ordering: Time ordering of the resolvent.
 
         Returns:
             Kernel of a Lehmann representation on the grid.
@@ -87,7 +87,7 @@ class BaseFrequencyGrid(BaseGrid):
             The kernel is a hook to generalise the resolvent or propagator, depending on whether
             the grid is in the frequency or time domain.
         """
-        return self.resolvent(energies, chempot, **kwargs)
+        return self.resolvent(energies, chempot, ordering=ordering)
 
 
 class RealFrequencyGrid(BaseFrequencyGrid):
@@ -141,7 +141,6 @@ class RealFrequencyGrid(BaseFrequencyGrid):
         chempot: float | Array,
         ordering: Ordering = Ordering.ORDERED,
         invert: bool = True,
-        **kwargs: Any,
     ) -> Array:
         r"""Get the resolvent of a Lehmann representation on the grid.
 
@@ -162,8 +161,6 @@ class RealFrequencyGrid(BaseFrequencyGrid):
         Returns:
             Resolvent on the grid.
         """
-        if kwargs:
-            raise TypeError(f"resolvent() got unexpected keyword argument: {next(iter(kwargs))}")
         signs = self._resolvent_signs(energies - chempot, ordering)
         grid = np.expand_dims(self.points, axis=tuple(range(1, energies.ndim + 1)))
         energies = np.expand_dims(energies, axis=0)
@@ -228,7 +225,6 @@ class ImaginaryFrequencyGrid(BaseFrequencyGrid):
         chempot: float | Array,
         ordering: Ordering = Ordering.ORDERED,
         invert: bool = True,
-        **kwargs: Any,
     ) -> Array:
         r"""Get the resolvent of a Lehmann representation on the grid.
 
@@ -248,8 +244,6 @@ class ImaginaryFrequencyGrid(BaseFrequencyGrid):
         Returns:
             Resolvent on the grid.
         """
-        if kwargs:
-            raise TypeError(f"resolvent() got unexpected keyword argument: {next(iter(kwargs))}")
         grid = np.expand_dims(self.points, axis=tuple(range(1, energies.ndim + 1)))
         energies = np.expand_dims(energies, axis=0)
         denominator = 1.0j * grid - energies
@@ -268,7 +262,8 @@ class ImaginaryFrequencyGrid(BaseFrequencyGrid):
         """
         if beta is None:
             beta = cls.beta
-        points = (2 * np.arange(num) + 1) * np.pi / beta
+        spacing = 2.0 * np.pi / beta
+        points = np.linspace(spacing * 0.5, spacing * (num - 0.5), num, endpoint=True)
         return cls(points, beta=beta)
 
     @classmethod

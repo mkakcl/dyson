@@ -46,14 +46,14 @@ class BaseTimeGrid(BaseGrid):
         self,
         energies: Array,
         chempot: float | Array,
-        **kwargs: Any,
+        ordering: Ordering = Ordering.ORDERED,
     ) -> Array:
         """Get the kernel of a Lehmann representation on the grid.
 
         Args:
             energies: Energies of the poles.
             chempot: Chemical potential.
-            kwargs: Additional keyword arguments for the resolvent.
+            ordering: Time ordering of the propagator.
 
         Returns:
             Kernel of a Lehmann representation on the grid.
@@ -62,7 +62,7 @@ class BaseTimeGrid(BaseGrid):
             The kernel is a hook to generalise the resolvent or propagator, depending on whether
             the grid is in the frequency or time domain.
         """
-        return self.propagator(energies, chempot, **kwargs)
+        return self.propagator(energies, chempot, ordering=ordering)
 
 
 class RealTimeGrid(BaseTimeGrid):
@@ -107,7 +107,6 @@ class RealTimeGrid(BaseTimeGrid):
         energies: Array,
         chempot: float | Array,
         ordering: Ordering = Ordering.ORDERED,
-        **kwargs: Any,
     ) -> Array:
         """Get the propagator of a Lehmann representation on the grid.
 
@@ -119,8 +118,6 @@ class RealTimeGrid(BaseTimeGrid):
         Returns:
             Propagator on the grid.
         """
-        if kwargs:
-            raise TypeError(f"propagator() got unexpected keyword argument: {next(iter(kwargs))}")
         grid = np.expand_dims(self.points, axis=tuple(range(1, energies.ndim + 1)))
         energies = np.expand_dims(energies, axis=0)
         phase = np.exp(-1.0j * grid * energies)
@@ -191,7 +188,6 @@ class ImaginaryTimeGrid(BaseTimeGrid):
         energies: Array,
         chempot: float | Array,
         ordering: Ordering = Ordering.ORDERED,
-        **kwargs: Any,
     ) -> Array:
         """Get the propagator of a Lehmann representation on the grid.
 
@@ -203,15 +199,16 @@ class ImaginaryTimeGrid(BaseTimeGrid):
         Returns:
             Propagator on the grid.
         """
-        if kwargs:
-            raise TypeError(f"propagator() got unexpected keyword argument: {next(iter(kwargs))}")
         grid = np.expand_dims(self.points, axis=tuple(range(1, energies.ndim + 1)))
         energies = np.expand_dims(energies, axis=0)
-        occ = ((energies - chempot) < 0).astype(np.float64)
-        vir = 1.0 - occ
-        propagator = np.exp(-energies * (grid - self.beta)) * occ
-        propagator -= np.exp(-energies * grid) * vir
-        return propagator
+        fermi = 1.0 / (1.0 + np.exp(-self.beta * energies))
+        propagator_raw = np.exp(-energies * grid)
+        propagator = np.where(
+            grid > chempot,
+            propagator_raw * fermi,
+            propagator_raw * (fermi - 1.0),
+        )
+        return propagator.astype(np.complex128)
 
     def evaluate_tail(
         self,
@@ -226,11 +223,21 @@ class ImaginaryTimeGrid(BaseTimeGrid):
         Returns:
             Values of the tail expansion on the grid.
         """
+        orders = [
+            lambda x: -1/2 * np.sign(x),
+            lambda x: -1/4 * (self.beta - 2.0 * np.abs(x)),
+            lambda x: +1/4 * x * (self.beta - np.abs(x)),
+            lambda x: +1/48 * (self.beta**3 - 6.0 * self.beta * x ** 2 + 4.0 * np.abs(x ** 3)),
+            lambda x: -1/48 * x * (self.beta**3 - 2.0 * self.beta * x ** 2 + np.abs(x ** 3)),
+        ]
         tail: Array = 0.0
         for i, moment in enumerate(moments):
-            coefficient = (-1) ** i / factorial(i + 1)
-            x = self.points ** (i + 1) - self.beta ** i * self.points
-            tail -= util.einsum("...,w->w...", moment, coefficient * x)
+            if i >= len(orders):
+                raise NotImplementedError(
+                    f"{self.__class__.__name__}.evaluate_tail only supports up to order "
+                    f"{len(orders)-1}."
+                )
+            tail -= util.einsum("...,w->w...", moment, orders[i](self.points))
         return tail
 
     @property
@@ -249,7 +256,7 @@ class ImaginaryTimeGrid(BaseTimeGrid):
         Returns:
             Inverse temperature of the grid.
         """
-        return self.points[-1] - self.points[0]
+        return -(self.points[0] + self.points[-1])
 
     @classmethod
     def from_uniform(cls, num: int, beta: float) -> ImaginaryTimeGrid:
@@ -262,7 +269,8 @@ class ImaginaryTimeGrid(BaseTimeGrid):
         Returns:
             Uniform real time grid.
         """
-        points = np.linspace(0, beta, num, endpoint=True)
+        spacing = beta / num
+        points = np.linspace(-beta + spacing * 0.5, -spacing * 0.5, num, endpoint=True)
         return cls(points)
 
 

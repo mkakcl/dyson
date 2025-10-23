@@ -5,8 +5,10 @@ from __future__ import annotations
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from dyson import numpy as np
+
 if TYPE_CHECKING:
-    pass
+    from dyson.typing import Array
 
 
 class RepresentationEnum(Enum):
@@ -37,6 +39,18 @@ class Reduction(RepresentationEnum):
     def ndim(self) -> int:
         """Get the number of dimensions of the array for this reduction."""
         return {Reduction.NONE: 2, Reduction.DIAG: 1, Reduction.TRACE: 0}[self]
+
+    def identity(self, size: int) -> Array:
+        """Get the identity array for this reduction."""
+        if self == Reduction.NONE:
+            return np.eye(size)
+        elif self == Reduction.DIAG:
+            return np.ones(size)
+        elif self == Reduction.TRACE:
+            return np.array(size)  # \sum_i 1 = size
+        else:
+            self.raise_invalid_representation()
+
 
 
 class Component(RepresentationEnum):

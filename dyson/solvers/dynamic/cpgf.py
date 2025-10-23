@@ -222,6 +222,7 @@ class CPGF(DynamicSolver):
             greens_function,
             reduction=self.reduction,
             component=self.component,
+            ordering=self.ordering,
             hermitian=np.allclose(self.moments, self.moments.transpose(0, 2, 1).conj()),
         )
 

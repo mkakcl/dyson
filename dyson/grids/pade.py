@@ -34,10 +34,10 @@ def _pade_coefficients(
         raise ValueError("only uniform weights are supported.")
 
     # Initialise the coefficients
-    resolvent = grid.resolvent(np.array(0.0), 0.0, invert=False)
+    resolvent = grid.resolvent(np.array(0.0), 0.0, invert=False, ordering=greens_function.ordering)
     coefficients = greens_function.array.copy()
     if tail_moments:
-        coefficients -= grid.evaluate_tail(tail_moments)
+        coefficients -= grid.evaluate_tail(tail_moments, ordering=greens_function.ordering)
 
     # Recursively compute the coefficients
     for i in range(len(grid) - 1):
@@ -75,7 +75,7 @@ def evaluate_pade(
     # Initialise the array
     resolvent_old = grid_old.resolvent(np.array(0.0), 0.0, invert=False, ordering=ordering)
     resolvent_new = grid_new.resolvent(np.array(0.0), 0.0, invert=False, ordering=ordering)
-    array = coefficients[-1].copy()
+    array = coefficients[[-1]].copy()
 
     # Recursively evaluate the Pade approximation
     for i in range(len(grid_old) - 1, -1, -1):
@@ -104,11 +104,20 @@ def analytic_continuation_freq_pade(
     Returns:
         Green's function in the conjugate frequency domain.
     """
+    if greens_function.ordering == Ordering.ORDERED:
+        raise ValueError("Pade approximation not defined for time-ordered Green's functions.")
     coefficients = _pade_coefficients(greens_function, tail_moments)
-    array = evaluate_pade(coefficients, greens_function.grid, grid, tail_moments=tail_moments)
+    array = evaluate_pade(
+        coefficients,
+        greens_function.grid,
+        grid,
+        tail_moments=tail_moments,
+        ordering=greens_function.ordering,
+    )
     return greens_function.__class__(
         grid,
         array,
         reduction=greens_function.reduction,
         hermitian=greens_function.hermitian,
+        ordering=greens_function.ordering,
     )
