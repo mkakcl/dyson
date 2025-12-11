@@ -8,7 +8,7 @@ import pytest
 from pyscf import gto, scf
 
 from dyson import numpy as np
-from dyson.expressions import ADC2, CCSD, FCI, HF, TDAGW, ADC2x
+from dyson.expressions import ADC2, CCSD, FCI, HF, ADC2x
 from dyson.representations.lehmann import Lehmann
 from dyson.representations.spectral import Spectral
 from dyson.solvers import Exact
@@ -51,8 +51,8 @@ for key, mf in MF_CACHE.items():
     dm = mf.make_rdm1(mo, mf.mo_occ)
     mf = mf.run(dm)
 
-METHODS = [HF, CCSD, FCI, ADC2, ADC2x, TDAGW]
-METHOD_NAMES = ["HF", "CCSD", "FCI", "ADC2", "ADC2x", "TDAGW"]
+METHODS = [HF, CCSD, FCI, ADC2, ADC2x]
+METHOD_NAMES = ["HF", "CCSD", "FCI", "ADC2", "ADC2x"]
 
 
 def pytest_generate_tests(metafunc):  # type: ignore

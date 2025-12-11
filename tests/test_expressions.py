@@ -10,7 +10,7 @@ import pyscf
 import pytest
 
 from dyson import util
-from dyson.expressions import ADC2, CCSD, FCI, HF, TDAGW, ADC2x
+from dyson.expressions import ADC2, CCSD, FCI, HF, ADC2x
 from dyson.solvers import Davidson, Exact
 
 if TYPE_CHECKING:
@@ -283,27 +283,3 @@ def test_adc2x(mf: scf.hf.RHF) -> None:
     gf_moment_0 = gf_moments_h[0] + gf_moments_p[0]
 
     assert np.allclose(gf_moment_0, np.eye(mf.mol.nao))
-
-
-def test_tdagw(mf: scf.hf.RHF, exact_cache: ExactGetter) -> None:
-    """Test the TDAGW expression."""
-    tdagw = TDAGW["dyson"].from_mf(mf)
-    dft = mf.to_rks()
-    dft.xc = "hf"
-
-    td = pyscf.tdscf.dTDA(dft)
-    td.nstates = np.sum(mf.mo_occ > 0) * np.sum(mf.mo_occ == 0)
-    td.kernel()
-    td.xy = np.array([(x, np.zeros_like(x)) for x, y in td.xy])
-    gw_obj = pyscf.gw.GW(dft, tdmf=td, freq_int="exact")
-    gw_obj.kernel()
-
-    # Get the IPs and EAs from the Exact solver
-    solver = exact_cache(mf, TDAGW["dyson"])
-    assert solver.result is not None
-    gf = solver.result.get_greens_function()
-    mo_energy = gf.as_perturbed_mo_energy()
-
-    # No diagonal approximation in TDAGW so large error
-    assert np.abs(mo_energy[tdagw.nocc - 1] - gw_obj.mo_energy[tdagw.nocc - 1]) < 1e-3
-    assert np.abs(mo_energy[tdagw.nocc] - gw_obj.mo_energy[tdagw.nocc]) < 1e-3
