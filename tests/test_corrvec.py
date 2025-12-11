@@ -28,8 +28,6 @@ def test_vs_exact_solver(
     expression = expression_cls.from_mf(mf)
     if expression.nconfig > 1024:  # TODO: Make larger for CI runs?
         pytest.skip("Skipping test for large Hamiltonian")
-    if expression.nsingle == (expression.nocc + expression.nvir):
-        pytest.skip("Skipping test for central Hamiltonian")
     grid = RealFrequencyGrid.from_uniform(-2, 2, 16, 0.1)
 
     # Solve the Hamiltonian exactly

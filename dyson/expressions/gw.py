@@ -145,7 +145,7 @@ class BaseGW_Dyson(BaseExpression):
     @property
     def non_dyson(self) -> bool:
         """Whether the expression produces a non-Dyson Green's function."""
-        return False
+        return True
 
 
 class TDAGW_Dyson(BaseGW_Dyson):

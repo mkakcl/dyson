@@ -166,16 +166,6 @@ def _get_central_result(
     allow_hermitian: bool = True,
 ) -> Spectral:
     """Get the central result for the given mean-field method."""
-    if "dyson" in expression_method:
-        expression = expression_method.dyson.from_mf(mf)
-        if expression.nconfig > 1024:
-            pytest.skip("Skipping test for large Hamiltonian")
-        if not expression.hermitian and not allow_hermitian:
-            pytest.skip("Skipping test for non-Hermitian Hamiltonian with negative weights")
-        exact = exact_cache(mf, expression_method.dyson)
-        assert exact.result is not None
-        return exact.result
-
     # Combine hole and particle results
     expression_h = expression_method.h.from_mf(mf)
     expression_p = expression_method.p.from_mf(mf)

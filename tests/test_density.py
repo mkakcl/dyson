@@ -26,8 +26,6 @@ def test_vs_exact_solver(
     exact_cache: ExactGetter,
 ) -> None:
     """Test DensityRelaxation compared to the exact solver."""
-    if "h" not in expression_method or "p" not in expression_method:
-        pytest.skip("Skipping test for Dyson only expression")
     expression_h = expression_method.h.from_mf(mf)
     expression_p = expression_method.p.from_mf(mf)
     if expression_h.nconfig > 1024 or expression_p.nconfig > 1024:

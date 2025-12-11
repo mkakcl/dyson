@@ -464,10 +464,6 @@ class _ExpressionCollectionMeta(type):
             if cls._particle is None:
                 raise ValueError("Particle expression is not set.")
             return cls._particle
-        elif key in {"central", "dyson"}:
-            if cls._dyson is None:
-                raise ValueError("Central (Dyson) expression is not set.")
-            return cls._dyson
         elif key in {"neutral", "ee", "ph"}:
             if cls._neutral is None:
                 raise ValueError("Neutral expression is not set.")
@@ -481,7 +477,7 @@ class _ExpressionCollectionMeta(type):
     def _classes(cls) -> set[type[BaseExpression]]:
         """Get all classes in the collection."""
         return {
-            cls for cls in [cls._hole, cls._particle, cls._dyson, cls._neutral] if cls is not None
+            cls for cls in [cls._hole, cls._particle, cls._neutral] if cls is not None
         }
 
     def __contains__(cls, key: str) -> bool:
@@ -498,7 +494,6 @@ class ExpressionCollection(metaclass=_ExpressionCollectionMeta):
 
     _hole: type[BaseExpression] | None = None
     _particle: type[BaseExpression] | None = None
-    _dyson: type[BaseExpression] | None = None
     _neutral: type[BaseExpression] | None = None
     _name: str | None = None
 
