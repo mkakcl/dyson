@@ -285,7 +285,7 @@ class Spectral(BaseRepresentation):
         right = util.rotate_subspace(right, orth.T.conj())
 
         # Construct the eigenvectors
-        eigvecs = util.project_eigenvectors(
+        eigvecs = util.rotate_to_physical_auxiliary_basis(
             None,
             left,
             right if not hermitian else None,

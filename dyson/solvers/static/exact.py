@@ -189,7 +189,7 @@ class Exact(StaticSolver):
             eigvecs = np.array([left, right])
 
         # Get the full map onto physical + auxiliary and rotate the eigenvectors
-        eigvecs = util.project_eigenvectors(
+        eigvecs = util.rotate_to_physical_auxiliary_basis(
             eigvecs, self.bra, self.ket if not self.hermitian else None
         )
 

@@ -300,25 +300,44 @@ def null_space_basis(
 
 
 @cache_by_id
-def project_eigenvectors(
+def rotate_to_physical_auxiliary_basis(
     eigvecs: Array | None,
     bra: Array,
     ket: Array | None = None,
 ) -> Array:
-    """Project eigenvectors onto the physical plus auxiliary space.
+    """Rotate eigenvectors to a biorthonormal physical plus auxiliary basis.
+
+    This function constructs a complete biorthonormal basis that spans both the physical
+    space (defined by the provided bra/ket Dyson orbitals) and its orthogonal complement
+    (the auxiliary space). It then transforms the input eigenvectors into this basis.
+
+    The procedure involves:
+    1. Computing the null space of the projector formed from bra and ket vectors to obtain
+       the auxiliary space basis vectors
+    2. For Hermitian systems: Concatenating physical (bra) and auxiliary basis vectors
+    3. For non-Hermitian systems: Constructing a biorthonormal basis by orthogonalizing
+       the physical space and then biorthonormalizing the combined physical+auxiliary space
+    4. Rotating the input eigenvectors (or identity if None) into this complete basis
 
     Args:
-        eigvecs: Eigenvectors to be projected. If ``None``, assume identity.
-        bra: Bra state vector mapping the supermatrix to the physical space.
-        ket: Ket state vector mapping the supermatrix to the physical space. If ``None``, use the
-            same vectors as ``bra``.
+        eigvecs: Eigenvectors to be rotated into the physical+auxiliary basis. If ``None``,
+            returns the basis transformation itself (identity eigenvectors).
+        bra: Bra state vectors (Dyson orbitals) defining the physical space.
+            Shape: (nphys, nstates).
+        ket: Ket state vectors (Dyson orbitals) defining the physical space for non-Hermitian
+            systems. If ``None``, assumes a Hermitian system where ket = bra.
+            Shape: (nphys, nstates).
 
     Returns:
-        Projected eigenvectors.
+        Rotated eigenvectors in the physical+auxiliary basis. For Hermitian systems, shape is
+        (nphys+naux, nstates). For non-Hermitian systems, shape is (2, nphys+naux, nstates)
+        with left and right eigenvectors.
 
     Notes:
-        The physical space is defined by the ``bra`` and ``ket`` vectors, while the auxiliary part
-        is defined by the null space of the projector formed by the outer product of these vectors.
+        The physical space is defined by the ``bra`` and ``ket`` vectors (Dyson orbitals),
+        while the auxiliary space is the null space orthogonal to the projector formed by
+        the outer product of these vectors. This construction ensures the full supermatrix
+        space is spanned by a biorthonormal basis.
     """
     hermitian = ket is None
     nphys = bra.shape[0]
