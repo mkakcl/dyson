@@ -249,23 +249,13 @@ class Spectral(BaseRepresentation):
         Returns:
             Combined spectral representation.
         """
-        # TODO: just concatenate the eigenvectors...?
         args = (self, *args)
         if len(set(arg.nphys for arg in args)) != 1:
             raise ValueError(
                 "All Spectral objects must have the same number of physical degrees of freedom."
             )
         nphys = args[0].nphys
-
-        # Sum the overlap and static self-energy matrices
-        static = sum([arg.get_static_self_energy() for arg in args], np.zeros((nphys, nphys)))
-        overlap = sum([arg.get_overlap() for arg in args], np.zeros((nphys, nphys)))
-
-        # Orthogonalise under the metric of the overlap matrix
         hermitian = all(arg.hermitian for arg in args)
-        orth, _ = util.matrix_power(overlap, -0.5, hermitian=hermitian, return_error=False)
-        static = orth @ static @ orth
-        overlap = orth @ overlap @ orth
 
         # Check the chemical potentials
         if chempot is None:
@@ -273,31 +263,42 @@ class Spectral(BaseRepresentation):
                 chempots = [arg.chempot for arg in args if arg.chempot is not None]
                 if not all(np.isclose(chempots[0], part) for part in chempots[1:]):
                     raise ValueError(
-                        "If not chempot is passed to combine, all chemical potentials must be "
+                        "If chempot is not passed to combine, all chemical potentials must be "
                         "equal in the inputs."
                     )
                 chempot = chempots[0]
 
-        # Get the auxiliaries
-        energies = np.zeros((0))
+        # Get the eigenvalues and dyson orbitals
+        eigvals = np.concatenate([arg.eigvals for arg in args])
         left = np.zeros((nphys, 0))
         right = np.zeros((nphys, 0))
         for arg in args:
-            energies_i, couplings_i = arg.get_auxiliaries()
-            energies = np.concatenate([energies, energies_i])
-            if arg.hermitian:
-                left = np.concatenate([left, couplings_i], axis=1)
-            else:
-                left_i, right_i = util.unpack_vectors(couplings_i)
-                left = np.concatenate([left, left_i], axis=1)
-                right = np.concatenate([right, right_i], axis=1)
-        couplings = np.array([left, right]) if not args[0].hermitian else left
+            orbitals = arg.get_dyson_orbitals()[1]
+            left_i, right_i = util.unpack_vectors(orbitals)
+            left = np.concatenate([left, left_i], axis=1)
+            right = np.concatenate([right, right_i], axis=1)
 
-        # Solve the eigenvalue problem
-        self_energy = Lehmann(energies, couplings)
-        result = Spectral(
-            *self_energy.diagonalise_matrix(static, overlap=overlap), nphys, chempot=chempot
+        # Orthogonalise under the metric of the overlap matrix
+        overlap = sum([arg.get_overlap() for arg in args], np.zeros((nphys, nphys)))
+        orth, _ = util.matrix_power(overlap, -0.5, hermitian=hermitian, return_error=False)
+        left = util.rotate_subspace(left, orth)
+        right = util.rotate_subspace(right, orth.T.conj())
+
+        # Construct the eigenvectors
+        eigvecs = util.project_eigenvectors(
+            None,
+            left,
+            right if not hermitian else None,
         )
+
+        # Unorthogonalise the eigenvectors
+        unorth, _ = util.matrix_power(overlap, 0.5, hermitian=hermitian, return_error=False)
+        left = util.rotate_subspace(left, unorth.T.conj())
+        right = util.rotate_subspace(right, unorth)
+        eigvecs = np.array([left, right])
+
+        # Construct the result
+        result = Spectral(eigvals, eigvecs, nphys, chempot=chempot, sort=True)
 
         return result
 

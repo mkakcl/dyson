@@ -300,6 +300,74 @@ def null_space_basis(
 
 
 @cache_by_id
+def project_eigenvectors(
+    eigvecs: Array | None,
+    bra: Array,
+    ket: Array | None = None,
+) -> Array:
+    """Project eigenvectors onto the physical plus auxiliary space.
+
+    Args:
+        eigvecs: Eigenvectors to be projected. If ``None``, assume identity.
+        bra: Bra state vector mapping the supermatrix to the physical space.
+        ket: Ket state vector mapping the supermatrix to the physical space. If ``None``, use the
+            same vectors as ``bra``.
+
+    Returns:
+        Projected eigenvectors.
+
+    Notes:
+        The physical space is defined by the ``bra`` and ``ket`` vectors, while the auxiliary part
+        is defined by the null space of the projector formed by the outer product of these vectors.
+    """
+    hermitian = ket is None
+    nphys = bra.shape[0]
+    if not hermitian and eigvecs is not None and eigvecs.ndim == 2:
+        raise ValueError(
+            "bra and ket both passed implying a non-hermitian system, but eigvecs is 2D."
+        )
+    if ket is None:
+        ket = bra
+
+    # Find a basis for the null space of the bra and ket vectors
+    projector = ket.T @ bra.conj()
+    vectors = null_space_basis(projector, hermitian=hermitian)
+
+    # If the system is hermitian, the rotation is trivial
+    if hermitian:
+        rotation = np.concatenate([bra.T, vectors[0]], axis=1)
+        return rotation.T.conj() @ eigvecs if eigvecs is not None else rotation.T.conj()
+
+    # If the system is not hermitian, we need to ensure biorthonormality
+    overlap = ket.conj() @ bra.T
+    orth, orth_error = matrix_power(overlap, -0.5, hermitian=hermitian, return_error=True)
+    unorth, unorth_error = matrix_power(overlap, 0.5, hermitian=hermitian, return_error=True)
+
+    # Work in an orthonormal physical basis
+    bra = bra.T @ orth
+    ket = ket.T @ orth.T.conj()
+
+    # Biorthonormalise the physical plus auxiliary vectors
+    left = np.concatenate([ket, vectors[0]], axis=1)
+    right = np.concatenate([bra, vectors[1]], axis=1)
+    left, right = biorthonormalise(left, right)
+
+    # Return the physical vectors to the original basis
+    left[:, :nphys] = left[:, :nphys] @ unorth.T.conj()
+    right[:, :nphys] = right[:, :nphys] @ unorth
+
+    # Rotate the eigenvectors
+    eigvecs = np.array(
+        [
+            left.T.conj() @ eigvecs[0] if eigvecs is not None else left.T.conj(),
+            right.T.conj() @ eigvecs[1] if eigvecs is not None else right.T.conj(),
+        ]
+    )
+
+    return eigvecs
+
+
+@cache_by_id
 def matrix_power(
     matrix: Array,
     power: int | float,

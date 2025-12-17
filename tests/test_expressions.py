@@ -14,9 +14,12 @@ from dyson.expressions import ADC2, CCSD, FCI, HF, ADC2x
 from dyson.solvers import Davidson, Exact
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from pyscf import scf
 
     from dyson.expressions.expression import BaseExpression
+    from dyson.solvers.solver import BaseSolver
 
     from .conftest import ExactGetter, Helper
 
@@ -102,41 +105,89 @@ def test_static(
     assert np.allclose(static, gf_moments[1])
 
 
-def test_hf(mf: scf.hf.RHF) -> None:
+@pytest.mark.parametrize(
+    "solver_cls, solver_kwargs",
+    [
+        (Exact, dict()),
+        (Davidson, dict(nroots=3)),
+    ],
+)
+def test_hf(
+    helper: Helper, mf: scf.hf.RHF, solver_cls: type[BaseSolver], solver_kwargs: dict[str, Any]
+) -> None:
     """Test the HF expression."""
     hf_h = HF.h.from_mf(mf)
     hf_p = HF.p.from_mf(mf)
-    hf_dyson = HF["dyson"].from_mf(mf)
-    gf_h_moments = hf_h.build_gf_moments(2)
-    gf_p_moments = hf_p.build_gf_moments(2)
-    gf_dyson_moments = hf_dyson.build_gf_moments(2)
+    gf_moments_h = hf_h.build_gf_moments(2)
+    gf_moments_p = hf_p.build_gf_moments(2)
 
     # Get the energy from the hole moments
     h1e = np.einsum("pq,pi,qj->ij", mf.get_hcore(), mf.mo_coeff, mf.mo_coeff)
-    energy = util.gf_moments_galitskii_migdal(gf_h_moments, h1e, factor=1.0)
+    energy = util.gf_moments_galitskii_migdal(gf_moments_h, h1e, factor=1.0)
 
     assert np.abs(energy - mf.energy_elec()[0]) < 1e-8
 
     # Get the Fock matrix Fock matrix from the moments
     fock_ref = np.einsum("pq,pi,qj->ij", mf.get_fock(), mf.mo_coeff, mf.mo_coeff)
-    fock = gf_h_moments[1] + gf_p_moments[1]
+    fock = gf_moments_h[1] + gf_moments_p[1]
 
     assert np.allclose(fock, fock_ref)
-    assert np.allclose(gf_dyson_moments[1], fock)
+    assert np.allclose(gf_moments_h[1] + gf_moments_p[1], fock)
 
-    # Get the Green's function from the Exact solver
-    exact_h = Exact.from_expression(hf_h)
-    exact_h.kernel()
-    exact_p = Exact.from_expression(hf_p)
-    exact_p.kernel()
-    assert exact_h.result is not None
-    assert exact_p.result is not None
-    result = exact_h.result.combine(exact_p.result)
+    # Get the hole Green's function from the Exact solver
+    solver_h = solver_cls.from_expression(hf_h, **solver_kwargs)
+    solver_h.kernel()
+    nocc = mf.mol.nelectron // 2
 
-    assert np.allclose(result.get_greens_function().as_perturbed_mo_energy(), mf.mo_energy)
+    assert solver_h.result is not None
+    assert np.allclose(
+        solver_h.result.get_greens_function().as_perturbed_mo_energy()[nocc-1], mf.mo_energy[nocc-1]
+    )
+    if solver_cls is Exact:
+        assert helper.have_equal_moments(solver_h.result.get_greens_function(), gf_moments_h, 2)
+
+    # Get the particle Green's function
+    solver_p = solver_cls.from_expression(hf_p, **solver_kwargs)
+    solver_p.kernel()
+
+    assert solver_p.result is not None
+    assert np.allclose(
+        solver_p.result.get_greens_function().as_perturbed_mo_energy()[nocc], mf.mo_energy[nocc]
+    )
+    if solver_cls is Exact:
+        assert helper.have_equal_moments(solver_p.result.get_greens_function(), gf_moments_p, 2)
+
+    # Get the combined Green's function
+    result = solver_h.result.combine(solver_p.result)
+
+    assert np.allclose(
+        result.get_greens_function().as_perturbed_mo_energy()[nocc-1], mf.mo_energy[nocc-1]
+    )
+    assert np.allclose(
+        result.get_greens_function().as_perturbed_mo_energy()[nocc], mf.mo_energy[nocc]
+    )
+    if solver_cls is Exact:
+        assert np.allclose(result.get_greens_function().as_perturbed_mo_energy(), mf.mo_energy)
+        assert helper.have_equal_moments(
+            result.get_greens_function(), gf_moments_h + gf_moments_p, 2
+        )
+
+    # Check the zeroth moments add to identity
+    gf_moment_0 = gf_moments_h[0] + gf_moments_p[0]
+
+    assert np.allclose(gf_moment_0, np.eye(mf.mol.nao))
 
 
-def test_ccsd(mf: scf.hf.RHF) -> None:
+@pytest.mark.parametrize(
+    "solver_cls, solver_kwargs",
+    [
+        (Exact, dict()),
+        (Davidson, dict(nroots=3)),
+    ],
+)
+def test_ccsd(
+    helper: Helper, mf: scf.hf.RHF, solver_cls: type[BaseSolver], solver_kwargs: dict[str, Any]
+) -> None:
     """Test the CCSD expression."""
     ccsd_h = CCSD.h.from_mf(mf)
     ccsd_p = CCSD.p.from_mf(mf)
@@ -158,13 +209,35 @@ def test_ccsd(mf: scf.hf.RHF) -> None:
     else:
         assert correct_energy
 
-    # Get the Green's function from the Davidson solver
-    davidson = Davidson.from_expression(ccsd_h, nroots=3)
-    davidson.kernel()
+    # Get the hole Green's function from
+    solver_h = solver_cls.from_expression(ccsd_h, **solver_kwargs)
+    solver_h.kernel()
     ip_ref, _ = pyscf_ccsd.ipccsd(nroots=3)
 
-    assert davidson.result is not None
-    assert np.allclose(davidson.result.eigvals[0], -ip_ref[-1])
+    assert solver_h.result is not None
+    assert np.allclose(solver_h.result.eigvals[-1], -ip_ref[0])
+    if solver_cls is Exact:
+        assert helper.have_equal_moments(solver_h.result.get_greens_function(), gf_moments_h, 2)
+
+    # Get the particle Green's function
+    solver_p = solver_cls.from_expression(ccsd_p, **solver_kwargs)
+    solver_p.kernel()
+    ea_ref, _ = pyscf_ccsd.eaccsd(nroots=3)
+
+    assert solver_p.result is not None
+    assert np.allclose(solver_p.result.eigvals[0], ea_ref[0])
+    if solver_cls is Exact:
+        assert helper.have_equal_moments(solver_p.result.get_greens_function(), gf_moments_p, 2)
+
+    # Get the combined Green's function
+    result = solver_h.result.combine(solver_p.result)
+
+    assert np.allclose(result.get_greens_function().physical().occupied().energies[-1], -ip_ref[0])
+    assert np.allclose(result.get_greens_function().physical().virtual().energies[0], ea_ref[0])
+    if solver_cls is Exact:
+        assert helper.have_equal_moments(
+            result.get_greens_function(), gf_moments_h + gf_moments_p, 2
+        )
 
     # Check the RDM
     rdm1 = gf_moments_h[0].copy()
@@ -179,7 +252,16 @@ def test_ccsd(mf: scf.hf.RHF) -> None:
     assert np.allclose(gf_moment_0, np.eye(mf.mol.nao))
 
 
-def test_fci(mf: scf.hf.RHF) -> None:
+@pytest.mark.parametrize(
+    "solver_cls, solver_kwargs",
+    [
+        (Exact, dict()),
+        (Davidson, dict(nroots=3)),
+    ],
+)
+def test_fci(
+    helper: Helper, mf: scf.hf.RHF, solver_cls: type[BaseSolver], solver_kwargs: dict[str, Any]
+) -> None:
     """Test the FCI expression."""
     fci_h = FCI.h.from_mf(mf)
     fci_p = FCI.p.from_mf(mf)
@@ -190,9 +272,50 @@ def test_fci(mf: scf.hf.RHF) -> None:
     # Get the energy from the hole moments
     h1e = np.einsum("pq,pi,qj->ij", mf.get_hcore(), mf.mo_coeff, mf.mo_coeff)
     energy = util.gf_moments_galitskii_migdal(gf_moments_h, h1e, factor=1.0)
-    energy_ref = pyscf_fci.kernel()[0] - mf.mol.energy_nuc()
+    energy_fci = pyscf_fci.kernel()[0]
+    energy_ref = energy_fci - mf.mol.energy_nuc()
 
     assert np.abs(energy - energy_ref) < 1e-8
+
+    # Get the hole Green's function
+    solver_h = solver_cls.from_expression(fci_h, **solver_kwargs)
+    solver_h.kernel()
+    mol_h = mf.mol.copy()
+    mol_h.nelec = (mf.mol.nelec[0] - 1, mf.mol.nelec[1])
+    pyscf_fci_h = pyscf.fci.FCI(mf.__class__(mol_h).run())
+    energy_fci_h = pyscf_fci_h.kernel()[0]
+    energy_ref_h = energy_fci_h - mf.mol.energy_nuc()
+    ip_ref = energy_ref - energy_ref_h
+
+    assert solver_h.result is not None
+    assert np.allclose(solver_h.result.eigvals[-1], ip_ref)
+    if solver_cls is Exact:
+        assert helper.have_equal_moments(solver_h.result.get_greens_function(), gf_moments_h, 2)
+
+    # Get the particle Green's function
+    solver_p = solver_cls.from_expression(fci_p, **solver_kwargs)
+    solver_p.kernel()
+    mol_p = mf.mol.copy()
+    mol_p.nelec = (mf.mol.nelec[0] + 1, mf.mol.nelec[1])
+    pyscf_fci_p = pyscf.fci.FCI(mf.__class__(mol_p).run())
+    energy_fci_p = pyscf_fci_p.kernel()[0]
+    energy_ref_p = energy_fci_p - mf.mol.energy_nuc()
+    ea_ref = energy_ref_p - energy_ref
+
+    assert solver_p.result is not None
+    assert np.allclose(solver_p.result.eigvals[0], ea_ref)
+    if solver_cls is Exact:
+        assert helper.have_equal_moments(solver_p.result.get_greens_function(), gf_moments_p, 2)
+
+    # Get the combined Green's function
+    result = solver_h.result.combine(solver_p.result)
+
+    assert np.allclose(result.get_greens_function().physical().occupied().energies[-1], ip_ref)
+    assert np.allclose(result.get_greens_function().physical().virtual().energies[0], ea_ref)
+    if solver_cls is Exact:
+        assert helper.have_equal_moments(
+            result.get_greens_function(), gf_moments_h + gf_moments_p, 2
+        )
 
     # Check the RDM
     rdm1 = fci_h.build_gf_moments(1)[0] * 2
@@ -214,28 +337,61 @@ def test_fci(mf: scf.hf.RHF) -> None:
         assert np.allclose(gf_moments_ccsd[1], gf_moments_h[1])
 
 
-def test_adc2(mf: scf.hf.RHF) -> None:
+@pytest.mark.parametrize(
+    "solver_cls, solver_kwargs",
+    [
+        (Exact, dict()),
+        (Davidson, dict(nroots=3)),
+    ],
+)
+def test_adc2(
+    helper: Helper, mf: scf.hf.RHF, solver_cls: type[BaseSolver], solver_kwargs: dict[str, Any]
+) -> None:
     """Test the ADC(2) expression."""
     adc_h = ADC2.h.from_mf(mf)
     adc_p = ADC2.p.from_mf(mf)
-    pyscf_adc = pyscf.adc.ADC(mf)
+    pyscf_adc_ip = pyscf.adc.ADC(mf)
+    pyscf_adc_ea = pyscf.adc.ADC(mf)
+    pyscf_adc_ea.method_type = "ea"
     gf_moments_h = adc_h.build_gf_moments(2)
     gf_moments_p = adc_p.build_gf_moments(2)
 
     # Get the energy from the hole moments
     h1e = np.einsum("pq,pi,qj->ij", mf.get_hcore(), mf.mo_coeff, mf.mo_coeff)
     energy = util.gf_moments_galitskii_migdal(gf_moments_h, h1e, factor=1.0)
-    energy_ref = mf.energy_elec()[0] + pyscf_adc.kernel_gs()[0]
+    energy_ref = mf.energy_elec()[0] + pyscf_adc_ip.kernel_gs()[0]
 
     assert np.abs(energy - energy_ref) < 1e-8
 
-    # Get the Green's function from the Davidson solver
-    davidson = Davidson.from_expression(adc_h, nroots=3)
-    davidson.kernel()
-    ip_ref, _, _, _ = pyscf_adc.kernel(nroots=3)
+    # Get the hole Green's function from the Davidson solver
+    solver_h = solver_cls.from_expression(adc_h, **solver_kwargs)
+    solver_h.kernel()
+    ip_ref, _, _, _ = pyscf_adc_ip.kernel(nroots=3)
 
-    assert davidson.result is not None
-    assert np.allclose(davidson.result.eigvals[0], -ip_ref[-1])
+    assert solver_h.result is not None
+    assert np.allclose(solver_h.result.eigvals[-1], -ip_ref[0])
+    if solver_cls is Exact:
+        assert helper.have_equal_moments(solver_h.result.get_greens_function(), gf_moments_h, 2)
+
+    # Get the particle Green's function from the Davidson solver
+    solver_p = solver_cls.from_expression(adc_p, **solver_kwargs)
+    solver_p.kernel()
+    ea_ref, _, _, _ = pyscf_adc_ea.kernel(nroots=3)
+
+    assert solver_p.result is not None
+    assert np.allclose(solver_p.result.eigvals[0], ea_ref[0])
+    if solver_cls is Exact:
+        assert helper.have_equal_moments(solver_p.result.get_greens_function(), gf_moments_p, 2)
+
+    # Get the combined Green's function from the Davidson solver
+    result = solver_h.result.combine(solver_p.result)
+
+    assert np.allclose(result.get_greens_function().physical().occupied().energies[-1], -ip_ref[0])
+    assert np.allclose(result.get_greens_function().physical().virtual().energies[0], ea_ref[0])
+    if solver_cls is Exact:
+        assert helper.have_equal_moments(
+            result.get_greens_function(), gf_moments_h + gf_moments_p, 2
+        )
 
     # Check the RDM
     rdm1 = adc_h.build_gf_moments(1)[0] * 2
@@ -249,29 +405,63 @@ def test_adc2(mf: scf.hf.RHF) -> None:
     assert np.allclose(gf_moment_0, np.eye(mf.mol.nao))
 
 
-def test_adc2x(mf: scf.hf.RHF) -> None:
+@pytest.mark.parametrize(
+    "solver_cls, solver_kwargs",
+    [
+        (Exact, dict()),
+        (Davidson, dict(nroots=3)),
+    ],
+)
+def test_adc2x(
+    helper: Helper, mf: scf.hf.RHF, solver_cls: type[BaseSolver], solver_kwargs: dict[str, Any]
+) -> None:
     """Test the ADC(2)-x expression."""
     adc_h = ADC2x.h.from_mf(mf)
     adc_p = ADC2x.p.from_mf(mf)
-    pyscf_adc = pyscf.adc.ADC(mf)
-    pyscf_adc.method = "adc(2)-x"
+    pyscf_adc_ip = pyscf.adc.ADC(mf)
+    pyscf_adc_ip.method = "adc(2)-x"
+    pyscf_adc_ea = pyscf.adc.ADC(mf)
+    pyscf_adc_ea.method = "adc(2)-x"
+    pyscf_adc_ea.method_type = "ea"
     gf_moments_h = adc_h.build_gf_moments(2)
     gf_moments_p = adc_p.build_gf_moments(2)
 
     # Get the energy from the hole moments
     h1e = np.einsum("pq,pi,qj->ij", mf.get_hcore(), mf.mo_coeff, mf.mo_coeff)
     energy = util.gf_moments_galitskii_migdal(gf_moments_h, h1e, factor=1.0)
-    energy_ref = mf.energy_elec()[0] + pyscf_adc.kernel_gs()[0]
+    energy_ref = mf.energy_elec()[0] + pyscf_adc_ip.kernel_gs()[0]
 
     assert np.abs(energy - energy_ref) < 1e-8
 
-    # Get the Green's function from the Davidson solver
-    davidson = Davidson.from_expression(adc_h, nroots=3)
-    davidson.kernel()
-    ip_ref, _, _, _ = pyscf_adc.kernel(nroots=3)
+    # Get the hole Green's function from the Davidson solver
+    solver_h = solver_cls.from_expression(adc_h, **solver_kwargs)
+    solver_h.kernel()
+    ip_ref, _, _, _ = pyscf_adc_ip.kernel(nroots=3)
 
-    assert davidson.result is not None
-    assert np.allclose(davidson.result.eigvals[0], -ip_ref[-1])
+    assert solver_h.result is not None
+    assert np.allclose(solver_h.result.eigvals[-1], -ip_ref[0])
+    if solver_cls is Exact:
+        assert helper.have_equal_moments(solver_h.result.get_greens_function(), gf_moments_h, 2)
+
+    # Get the particle Green's function from the Davidson solver
+    solver_p = solver_cls.from_expression(adc_p, **solver_kwargs)
+    solver_p.kernel()
+    ea_ref, _, _, _ = pyscf_adc_ea.kernel(nroots=3)
+
+    assert solver_p.result is not None
+    assert np.allclose(solver_p.result.eigvals[0], ea_ref[0])
+    if solver_cls is Exact:
+        assert helper.have_equal_moments(solver_p.result.get_greens_function(), gf_moments_p, 2)
+
+    # Get the combined Green's function from the Davidson solver
+    result = solver_h.result.combine(solver_p.result)
+
+    assert np.allclose(result.get_greens_function().physical().occupied().energies[-1], -ip_ref[0])
+    assert np.allclose(result.get_greens_function().physical().virtual().energies[0], ea_ref[0])
+    if solver_cls is Exact:
+        assert helper.have_equal_moments(
+            result.get_greens_function(), gf_moments_h + gf_moments_p, 2
+        )
 
     # Check the RDM
     rdm1 = adc_h.build_gf_moments(1)[0] * 2
