@@ -501,7 +501,7 @@ class MLSE(MBLSE):
         self_energy: Lehmann,
         overlap: Array | None = None,
         **kwargs: Any,
-    ) -> MBLSE:
+    ) -> MLSE:
         """Create a solver from a self-energy.
 
         Args:
@@ -516,7 +516,7 @@ class MLSE(MBLSE):
         raise NotImplementedError("Cannot instantiate MLSE from a self-energy.")
 
     @classmethod
-    def from_expression(cls, expression: BaseExpression, **kwargs: Any) -> MBLSE:
+    def from_expression(cls, expression: BaseExpression, **kwargs: Any) -> MLSE:
         """Create a solver from an expression.
 
         Args:

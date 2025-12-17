@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from pyscf import scf
 
     from dyson.expressions.expression import BaseExpression
-    from dyson.solvers.solver import BaseSolver
+    from dyson.solvers.solver import StaticSolver
 
     from .conftest import ExactGetter, Helper
 
@@ -113,7 +113,7 @@ def test_static(
     ],
 )
 def test_hf(
-    helper: Helper, mf: scf.hf.RHF, solver_cls: type[BaseSolver], solver_kwargs: dict[str, Any]
+    helper: Helper, mf: scf.hf.RHF, solver_cls: type[StaticSolver], solver_kwargs: dict[str, Any]
 ) -> None:
     """Test the HF expression."""
     hf_h = HF.h.from_mf(mf)
@@ -141,7 +141,8 @@ def test_hf(
 
     assert solver_h.result is not None
     assert np.allclose(
-        solver_h.result.get_greens_function().as_perturbed_mo_energy()[nocc-1], mf.mo_energy[nocc-1]
+        solver_h.result.get_greens_function().as_perturbed_mo_energy()[nocc - 1],
+        mf.mo_energy[nocc - 1],
     )
     if solver_cls is Exact:
         assert helper.have_equal_moments(solver_h.result.get_greens_function(), gf_moments_h, 2)
@@ -161,7 +162,7 @@ def test_hf(
     result = solver_h.result.combine(solver_p.result)
 
     assert np.allclose(
-        result.get_greens_function().as_perturbed_mo_energy()[nocc-1], mf.mo_energy[nocc-1]
+        result.get_greens_function().as_perturbed_mo_energy()[nocc - 1], mf.mo_energy[nocc - 1]
     )
     assert np.allclose(
         result.get_greens_function().as_perturbed_mo_energy()[nocc], mf.mo_energy[nocc]
@@ -186,7 +187,7 @@ def test_hf(
     ],
 )
 def test_ccsd(
-    helper: Helper, mf: scf.hf.RHF, solver_cls: type[BaseSolver], solver_kwargs: dict[str, Any]
+    helper: Helper, mf: scf.hf.RHF, solver_cls: type[StaticSolver], solver_kwargs: dict[str, Any]
 ) -> None:
     """Test the CCSD expression."""
     ccsd_h = CCSD.h.from_mf(mf)
@@ -260,7 +261,7 @@ def test_ccsd(
     ],
 )
 def test_fci(
-    helper: Helper, mf: scf.hf.RHF, solver_cls: type[BaseSolver], solver_kwargs: dict[str, Any]
+    helper: Helper, mf: scf.hf.RHF, solver_cls: type[StaticSolver], solver_kwargs: dict[str, Any]
 ) -> None:
     """Test the FCI expression."""
     fci_h = FCI.h.from_mf(mf)
@@ -345,7 +346,7 @@ def test_fci(
     ],
 )
 def test_adc2(
-    helper: Helper, mf: scf.hf.RHF, solver_cls: type[BaseSolver], solver_kwargs: dict[str, Any]
+    helper: Helper, mf: scf.hf.RHF, solver_cls: type[StaticSolver], solver_kwargs: dict[str, Any]
 ) -> None:
     """Test the ADC(2) expression."""
     adc_h = ADC2.h.from_mf(mf)
@@ -413,7 +414,7 @@ def test_adc2(
     ],
 )
 def test_adc2x(
-    helper: Helper, mf: scf.hf.RHF, solver_cls: type[BaseSolver], solver_kwargs: dict[str, Any]
+    helper: Helper, mf: scf.hf.RHF, solver_cls: type[StaticSolver], solver_kwargs: dict[str, Any]
 ) -> None:
     """Test the ADC(2)-x expression."""
     adc_h = ADC2x.h.from_mf(mf)

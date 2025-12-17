@@ -12,6 +12,7 @@ from dyson.representations.enums import Reduction
 
 if TYPE_CHECKING:
     from typing import Callable
+    from typing_extensions import Self
 
     from pyscf.gto.mole import Mole
     from pyscf.scf.hf import RHF
@@ -33,7 +34,7 @@ class BaseExpression(ABC):
 
     @classmethod
     @abstractmethod
-    def from_mf(cls, mf: RHF) -> BaseExpression:
+    def from_mf(cls, mf: RHF) -> Self:
         """Create an expression from a mean-field object.
 
         Args:
@@ -476,9 +477,7 @@ class _ExpressionCollectionMeta(type):
     @property
     def _classes(cls) -> set[type[BaseExpression]]:
         """Get all classes in the collection."""
-        return {
-            cls for cls in [cls._hole, cls._particle, cls._neutral] if cls is not None
-        }
+        return {cls for cls in [cls._hole, cls._particle, cls._neutral] if cls is not None}
 
     def __contains__(cls, key: str) -> bool:
         """Check if an expression exists by its name."""
