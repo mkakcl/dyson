@@ -12,10 +12,10 @@ from dyson.representations.enums import Reduction
 
 if TYPE_CHECKING:
     from typing import Callable
-    from typing_extensions import Self
 
     from pyscf.gto.mole import Mole
     from pyscf.scf.hf import RHF
+    from typing_extensions import Self
 
     from dyson.typing import Array
 

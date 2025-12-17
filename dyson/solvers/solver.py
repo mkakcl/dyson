@@ -15,6 +15,7 @@ from dyson.typing import Array
 
 if TYPE_CHECKING:
     from typing import Any
+
     from typing_extensions import Self
 
     from dyson.expressions.expression import BaseExpression
