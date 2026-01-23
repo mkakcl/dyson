@@ -398,6 +398,7 @@ class MBLSE(BaseMBL):
 
         return error_sqrt, error_inv_sqrt, error_moments
 
+    #FIXME: being called twice?
     def solve(self, iteration: int | None = None) -> Spectral:
         """Solve the eigenvalue problem at a given iteration.
 

@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from dyson.representations.spectral import Spectral
-from dyson.solvers import Downfolded
+from dyson.solvers import Downfolded, Exact
 
 if TYPE_CHECKING:
     from pyscf import scf
@@ -36,7 +36,7 @@ def test_vs_exact_solver(
     exact_p = exact_cache(mf, expression_method.p)
     assert exact_h.result is not None
     assert exact_p.result is not None
-    result_exact = Spectral.combine(exact_h.result, exact_p.result)
+    result_exact = Spectral.combine_for_greens_function(exact_h.result, exact_p.result)
 
     # Solve the Hamiltonian with Downfolded
     downfolded = Downfolded.from_self_energy(

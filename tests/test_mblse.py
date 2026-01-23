@@ -8,7 +8,7 @@ import pytest
 
 from dyson import util
 from dyson.representations.spectral import Spectral
-from dyson.solvers import MBLSE
+from dyson.solvers import Exact, MBLSE
 
 if TYPE_CHECKING:
     from pyscf import scf
@@ -73,7 +73,8 @@ def test_vs_exact_solver_central(
     exact_p = exact_cache(mf, expression_method.p)
     assert exact_h.result is not None
     assert exact_p.result is not None
-    result_exact_ph = Spectral.combine(exact_h.result, exact_p.result)
+    overlap = expression_h.build_overlap() + expression_p.build_overlap()
+    result_exact_ph = Spectral.combine_for_greens_function(exact_h.result, exact_p.result, overlap=overlap)
 
     # Get the self-energy and Green's function from the exact solver
     static_exact = result_exact_ph.get_static_self_energy()
@@ -101,15 +102,20 @@ def test_vs_exact_solver_central(
         hermitian=hermitian,
     )
     result_p = mblse_p.kernel()
-    result_ph = Spectral.combine(result_h, result_p)
 
-    # Recover the self-energy and Green's function from the MBLSE solver
+    # Combine for Green's function
+    result_ph = Spectral.combine_for_greens_function(result_h, result_p, overlap=overlap)
     static = result_ph.get_static_self_energy()
     self_energy = result_ph.get_self_energy()
     greens_function = result_ph.get_greens_function()
 
     assert helper.are_equal_arrays(static, static_exact)
-    assert helper.have_equal_moments(self_energy, se_h_moments_exact + se_p_moments_exact, nmom_se)
     assert helper.have_equal_moments(self_energy, self_energy_exact, nmom_se)
     assert helper.recovers_greens_function(static, self_energy, greens_function, 4)
     assert helper.have_equal_moments(greens_function, greens_function_exact, nmom_se)
+
+    # Combine for self-energy
+    result_ph = Spectral.combine_for_self_energy(result_h, result_p, overlap=overlap)
+    self_energy = result_ph.get_self_energy()
+
+    assert helper.have_equal_moments(self_energy, se_h_moments_exact + se_p_moments_exact, nmom_se)

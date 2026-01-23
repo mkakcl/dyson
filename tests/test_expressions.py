@@ -12,6 +12,7 @@ import pytest
 from dyson import util
 from dyson.expressions import ADC2, CCSD, FCI, HF, ADC2x
 from dyson.solvers import Davidson, Exact
+from dyson.representations.spectral import Spectral
 
 if TYPE_CHECKING:
     from typing import Any
@@ -159,7 +160,8 @@ def test_hf(
         assert helper.have_equal_moments(solver_p.result.get_greens_function(), gf_moments_p, 2)
 
     # Get the combined Green's function
-    result = solver_h.result.combine(solver_p.result)
+    overlap = hf_h.build_overlap() + hf_p.build_overlap()
+    result = Spectral.combine_for_greens_function(solver_h.result, solver_p.result, overlap=overlap)
 
     assert np.allclose(
         result.get_greens_function().as_perturbed_mo_energy()[nocc - 1], mf.mo_energy[nocc - 1]
@@ -231,10 +233,11 @@ def test_ccsd(
         assert helper.have_equal_moments(solver_p.result.get_greens_function(), gf_moments_p, 2)
 
     # Get the combined Green's function
-    result = solver_h.result.combine(solver_p.result)
+    overlap = ccsd_h.build_overlap() + ccsd_p.build_overlap()
+    result = Spectral.combine_for_greens_function(solver_h.result, solver_p.result, overlap=overlap)
 
-    assert np.allclose(result.get_greens_function().physical().occupied().energies[-1], -ip_ref[0])
-    assert np.allclose(result.get_greens_function().physical().virtual().energies[0], ea_ref[0])
+    assert np.allclose(result.get_greens_function().occupied().energies[-1], -ip_ref[0])
+    assert np.allclose(result.get_greens_function().virtual().energies[0], ea_ref[0])
     if solver_cls is Exact:
         assert helper.have_equal_moments(
             result.get_greens_function(), gf_moments_h + gf_moments_p, 2
@@ -309,10 +312,11 @@ def test_fci(
         assert helper.have_equal_moments(solver_p.result.get_greens_function(), gf_moments_p, 2)
 
     # Get the combined Green's function
-    result = solver_h.result.combine(solver_p.result)
+    overlap = fci_h.build_overlap() + fci_p.build_overlap()
+    result = Spectral.combine_for_greens_function(solver_h.result, solver_p.result, overlap=overlap)
 
-    assert np.allclose(result.get_greens_function().physical().occupied().energies[-1], ip_ref)
-    assert np.allclose(result.get_greens_function().physical().virtual().energies[0], ea_ref)
+    assert np.allclose(result.get_greens_function().occupied().energies[-1], ip_ref)
+    assert np.allclose(result.get_greens_function().virtual().energies[0], ea_ref)
     if solver_cls is Exact:
         assert helper.have_equal_moments(
             result.get_greens_function(), gf_moments_h + gf_moments_p, 2
@@ -385,10 +389,11 @@ def test_adc2(
         assert helper.have_equal_moments(solver_p.result.get_greens_function(), gf_moments_p, 2)
 
     # Get the combined Green's function from the Davidson solver
-    result = solver_h.result.combine(solver_p.result)
+    overlap = adc_h.build_overlap() + adc_p.build_overlap()
+    result = Spectral.combine_for_greens_function(solver_h.result, solver_p.result, overlap=overlap)
 
-    assert np.allclose(result.get_greens_function().physical().occupied().energies[-1], -ip_ref[0])
-    assert np.allclose(result.get_greens_function().physical().virtual().energies[0], ea_ref[0])
+    assert np.allclose(result.get_greens_function().occupied().energies[-1], -ip_ref[0])
+    assert np.allclose(result.get_greens_function().virtual().energies[0], ea_ref[0])
     if solver_cls is Exact:
         assert helper.have_equal_moments(
             result.get_greens_function(), gf_moments_h + gf_moments_p, 2
@@ -455,10 +460,11 @@ def test_adc2x(
         assert helper.have_equal_moments(solver_p.result.get_greens_function(), gf_moments_p, 2)
 
     # Get the combined Green's function from the Davidson solver
-    result = solver_h.result.combine(solver_p.result)
+    overlap = adc_h.build_overlap() + adc_p.build_overlap()
+    result = Spectral.combine_for_greens_function(solver_h.result, solver_p.result, overlap=overlap)
 
-    assert np.allclose(result.get_greens_function().physical().occupied().energies[-1], -ip_ref[0])
-    assert np.allclose(result.get_greens_function().physical().virtual().energies[0], ea_ref[0])
+    assert np.allclose(result.get_greens_function().occupied().energies[-1], -ip_ref[0])
+    assert np.allclose(result.get_greens_function().virtual().energies[0], ea_ref[0])
     if solver_cls is Exact:
         assert helper.have_equal_moments(
             result.get_greens_function(), gf_moments_h + gf_moments_p, 2

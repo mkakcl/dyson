@@ -9,7 +9,7 @@ import pytest
 
 from dyson.representations.lehmann import Lehmann
 from dyson.representations.spectral import Spectral
-from dyson.solvers import Davidson
+from dyson.solvers import Davidson, Exact
 
 if TYPE_CHECKING:
     from pyscf import scf
@@ -149,8 +149,13 @@ def test_vs_exact_solver_central(
         assert helper.have_equal_moments(self_energy, self_energy_exact, 2)
 
     # Use the component-wise solvers
-    result_exact = Spectral.combine(exact_h.result, exact_p.result)
-    result_davidson = Spectral.combine(davidson_h.result, davidson_p.result)
+    overlap = expression_h.build_overlap() + expression_p.build_overlap()
+    result_exact = Spectral.combine_for_greens_function(
+        exact_h.result, exact_p.result, overlap=overlap
+    )
+    result_davidson = Spectral.combine_for_greens_function(
+        exact_h.result, exact_p.result, overlap=overlap
+    )
 
     # Get the self-energy and Green's function from the Davidson solver
     static = result_davidson.get_static_self_energy()

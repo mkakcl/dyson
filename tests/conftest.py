@@ -177,4 +177,4 @@ def _get_central_result(
     exact_p = exact_cache(mf, expression_method.p)
     assert exact_h.result is not None
     assert exact_p.result is not None
-    return Spectral.combine(exact_h.result, exact_p.result)
+    return Spectral.combine_for_greens_function(exact_h.result, exact_p.result)

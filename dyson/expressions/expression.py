@@ -399,6 +399,25 @@ class BaseExpression(ABC):
         """
         pass
 
+    def build_overlap(self, reduction: Reduction = Reduction.NONE) -> Array:
+        """Build the matrix representing the overlap of the excitation vectors.
+
+        Args:
+            reduction: Reduction to apply to the overlap.
+
+        Returns:
+            Overlap matrix.
+
+        Notes:
+            The overlap matrix is equal to the zeroth moment of the Green's function.
+        """
+        return self.build_gf_moments(
+            1,
+            store_vectors=True,
+            left=False,
+            reduction=reduction,
+        )[0]
+
     @property
     @abstractmethod
     def mol(self) -> Mole:
