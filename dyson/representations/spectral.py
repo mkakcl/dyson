@@ -252,8 +252,8 @@ class Spectral(BaseRepresentation):
 
         Args:
             *spectrals: Spectral representations to combine.
-            overlap: Overlap matrix for the physical space. If not passed, the overlap matrices from the
-                individual spectral representations will be summed.
+            overlap: Overlap matrix for the physical space. If not passed, the overlap matrices from
+                the individual spectral representations will be summed.
             chempot: Chemical potential to use for the combined result. If not provided, the
                 chemical potential from the individual results will be used, raising an exception
                 if they are inconsistent.
@@ -274,8 +274,8 @@ class Spectral(BaseRepresentation):
 
         Args:
             *spectrals: Spectral representations to combine.
-            overlap: Overlap matrix for the physical space. If not passed, the overlap matrices from the
-                individual spectral representations will be summed.
+            overlap: Overlap matrix for the physical space. If not passed, the overlap matrices from
+                the individual spectral representations will be summed.
             chempot: Chemical potential to use for the combined result. If not provided, the
                 chemical potential from the individual results will be used, raising an exception
                 if they are inconsistent.
@@ -366,8 +366,7 @@ def _get_chemical_potential(spectrals: tuple[Spectral, ...]) -> float | None:
     Raises:
         ValueError: If the chemical potentials are inconsistent.
     """
-    chempot_set = {s.chempot for s in spectrals}
-    chempot_set.discard(None)
+    chempot_set = {s.chempot for s in spectrals if s.chempot is not None}
     if not all(np.isclose(c1, c2) for c1 in chempot_set for c2 in chempot_set):
         raise ValueError("Inconsistent chemical potentials in spectral representations.")
     return chempot_set.pop() if chempot_set else None
@@ -401,7 +400,7 @@ def combine_for_greens_function(
     if chempot is None:
         chempot = _get_chemical_potential(spectrals)
     if overlap is None:
-        overlap = sum(spectral.overlap for spectral in spectrals)
+        overlap = sum((spectral.overlap for spectral in spectrals), np.zeros((nphys, nphys)))
 
     # Combine the eigenvalues and Dyson orbitals
     eigvals = np.concatenate([spectral.eigvals for spectral in spectrals], axis=0)
@@ -431,8 +430,8 @@ def combine_for_greens_function(
     left, right = util.biorthonormalise(left, right)
 
     # Unorthogonalise the vectors
-    left[:, : nphys] = left[:, : nphys] @ unorth.T.conj()
-    right[:, : nphys] = right[:, : nphys] @ unorth
+    left[:, :nphys] = left[:, :nphys] @ unorth.T.conj()
+    right[:, :nphys] = right[:, :nphys] @ unorth
 
     # Get the combined result
     eigvecs = np.array([left.T.conj(), right.T.conj()]) if not hermitian else left.T.conj()
@@ -463,13 +462,16 @@ def combine_for_self_energy(
     """
     if len(spectrals) == 1:
         return spectrals[0]
+    nphys = _get_physical_space_size(spectrals)
     if chempot is None:
         chempot = _get_chemical_potential(spectrals)
     if overlap is None:
-        overlap = sum(spectral.overlap for spectral in spectrals)
+        overlap = sum((spectral.overlap for spectral in spectrals), np.zeros((nphys, nphys)))
 
     # Combine the self-energies
-    static = sum(spectral.get_static_self_energy() for spectral in spectrals)
+    static = sum(
+        (spectral.get_static_self_energy() for spectral in spectrals), np.zeros((nphys, nphys))
+    )
     self_energy = spectrals[0].get_self_energy(chempot=chempot).copy()
     for spectral in spectrals[1:]:
         self_energy = self_energy.concatenate(spectral.get_self_energy(chempot=chempot))

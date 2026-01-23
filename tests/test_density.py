@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from dyson.representations.spectral import Spectral
-from dyson.solvers import DensityRelaxation, Exact
+from dyson.solvers import DensityRelaxation
 from dyson.solvers.static.density import get_fock_matrix_function
 
 if TYPE_CHECKING:

@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from dyson.representations.spectral import Spectral
-from dyson.solvers import Downfolded, Exact
+from dyson.solvers import Downfolded
 
 if TYPE_CHECKING:
     from pyscf import scf

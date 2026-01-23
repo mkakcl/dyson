@@ -11,8 +11,8 @@ import pytest
 
 from dyson import util
 from dyson.expressions import ADC2, CCSD, FCI, HF, ADC2x
-from dyson.solvers import Davidson, Exact
 from dyson.representations.spectral import Spectral
+from dyson.solvers import Davidson, Exact
 
 if TYPE_CHECKING:
     from typing import Any

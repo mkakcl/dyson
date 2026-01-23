@@ -8,7 +8,7 @@ import pytest
 
 from dyson import util
 from dyson.representations.spectral import Spectral
-from dyson.solvers import Exact, MBLSE
+from dyson.solvers import MBLSE
 
 if TYPE_CHECKING:
     from pyscf import scf
@@ -74,7 +74,9 @@ def test_vs_exact_solver_central(
     assert exact_h.result is not None
     assert exact_p.result is not None
     overlap = expression_h.build_overlap() + expression_p.build_overlap()
-    result_exact_ph = Spectral.combine_for_greens_function(exact_h.result, exact_p.result, overlap=overlap)
+    result_exact_ph = Spectral.combine_for_greens_function(
+        exact_h.result, exact_p.result, overlap=overlap
+    )
 
     # Get the self-energy and Green's function from the exact solver
     static_exact = result_exact_ph.get_static_self_energy()

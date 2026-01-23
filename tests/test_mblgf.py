@@ -8,7 +8,7 @@ import pytest
 
 from dyson import util
 from dyson.representations.spectral import Spectral
-from dyson.solvers import Exact, MBLGF
+from dyson.solvers import MBLGF
 
 if TYPE_CHECKING:
     from pyscf import scf
