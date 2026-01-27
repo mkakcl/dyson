@@ -15,7 +15,7 @@ is favoured according to a parameter.
 
 from pyscf import gto, scf
 
-from dyson import MBLSE, TDAGW, AufbauPrinciple, AuxiliaryShift, DensityRelaxation, Exact
+from dyson import MBLSE, FCI, AufbauPrinciple, AuxiliaryShift, DensityRelaxation, Exact, Spectral
 from dyson.solvers.static.density import get_fock_matrix_function
 
 # Get a molecule and mean-field from PySCF
@@ -23,15 +23,19 @@ mol = gto.M(atom="Li 0 0 0; H 0 0 1.64", basis="sto-3g", verbose=0)
 mf = scf.RHF(mol)
 mf.kernel()
 
-# Use a TDA-GW Dyson expression for the Hamiltonian
-exp = TDAGW.dyson.from_mf(mf)
+# Use an FCI expression for the Hamiltonian
+exp_h = FCI.h.from_mf(mf)
+exp_p = FCI.p.from_mf(mf)
 
 # Use the exact solver to get the self-energy for demonstration purposes
-exact = Exact.from_expression(exp)
-exact.kernel()
-static = exact.result.get_static_self_energy()
-self_energy = exact.result.get_self_energy()
-overlap = exact.result.get_overlap()
+exact_h = Exact.from_expression(exp_h)
+exact_h.kernel()
+exact_p = Exact.from_expression(exp_p)
+exact_p.kernel()
+result = Spectral.combine_for_self_energy(exact_h.result, exact_p.result)
+static = result.get_static_self_energy()
+self_energy = result.get_self_energy()
+overlap = result.get_overlap()
 
 # Solve the Hamiltonian using the density relaxation solver, initialisation via either:
 
