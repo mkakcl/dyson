@@ -154,7 +154,7 @@ def test_vs_exact_solver_central(
         exact_h.result, exact_p.result, overlap=overlap
     )
     result_davidson = Spectral.combine_for_greens_function(
-        exact_h.result, exact_p.result, overlap=overlap
+        davidson_h.result, davidson_p.result, overlap=overlap
     )
 
     # Get the self-energy and Green's function from the Davidson solver
