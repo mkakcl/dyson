@@ -24,7 +24,7 @@ exact_h = Exact.from_expression(exp_h)
 exact_h.kernel()
 exact_p = Exact.from_expression(exp_p)
 exact_p.kernel()
-result = exact_h.result.combine(exact_p.result)
+result = exact_h.result.combine_for_greens_function(exact_p.result)
 static = result.get_static_self_energy()
 self_energy = result.get_self_energy()
 

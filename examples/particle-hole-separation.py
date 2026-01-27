@@ -23,10 +23,10 @@ solver_h.kernel()
 solver_p = MBLGF.from_expression(exp_p, max_cycle=1)
 solver_p.kernel()
 
-# Combine the results -- this function operators by projecting the result back into a self-energy
+# Combine the results -- this function operates by projecting the result back into a self-energy
 # and combining the two self-energies, before diagonalising the combined self-energy to get a new
 # result spectrum. This may have unwanted consequences for some methodology, so use with care.
-result = Spectral.combine(solver_h.result, solver_p.result)
+result = Spectral.combine_for_greens_function(solver_h.result, solver_p.result)
 
 # Get the spectral functions
 grid = GridRF.from_uniform(-3.0, 3.0, 1024, eta=0.05)
