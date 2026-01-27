@@ -21,7 +21,7 @@ from dyson.grids.frequency import RealFrequencyGrid, GridRF
 from dyson.grids.frequency import ImaginaryFrequencyGrid, GridIF
 from dyson.grids.time import RealTimeGrid, GridRT
 from dyson.grids.time import ImaginaryTimeGrid, GridIT
-from dyson.grids.fourier import fourier_transform_imag
+from dyson.grids.fourier import fourier_transform_imag, fourier_transform_real
 from dyson.grids.pade import analytic_continuation_freq_pade
 
 if TYPE_CHECKING:
@@ -42,11 +42,11 @@ def transform(dynamic: Dynamic[BaseGrid], grid: BaseGrid, **kwargs: Any) -> Dyna
                ─────────>
         GridRF <───────── GridIF
                    AC
-                           │ ^
-                           │ │
-                      IFFT │ │ FFT
-                           │ │
-                           v │
+         │ ^               │ ^
+         │ │               │ │
+    IFFT │ │ FFT      IFFT │ │ FFT
+         │ │               │ │
+         v │               v │
 
         GridRT           GridIT
 
@@ -61,6 +61,10 @@ def transform(dynamic: Dynamic[BaseGrid], grid: BaseGrid, **kwargs: Any) -> Dyna
     Raises:
         NotImplementedError: If the transformation is not implemented.
     """
+    if isinstance(dynamic.grid, GridRF) and isinstance(grid, GridRT):
+        return fourier_transform_real(dynamic, grid, **kwargs)
+    if isinstance(dynamic.grid, GridRT) and isinstance(grid, GridRF):
+        return fourier_transform_real(dynamic, grid, **kwargs)
     if isinstance(dynamic.grid, GridIT) and isinstance(grid, GridIF):
         return fourier_transform_imag(dynamic, grid, **kwargs)
     if isinstance(dynamic.grid, GridIF) and isinstance(grid, GridIT):

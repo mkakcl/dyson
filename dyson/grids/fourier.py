@@ -286,14 +286,14 @@ def fourier_transform_imag(
     # Setup based on direction
     beta = grid_in.beta
     if forward:
-        sign = 1
-        norm = 1 / beta
         freqs, times = grid_in.points, grid_out.points
+        sign = -1
+        norm = 1 / beta
         fft = np.fft.fft
     else:
-        sign = -1
-        norm = beta
         freqs, times = grid_out.points, grid_in.points
+        sign = 1
+        norm = beta
         fft = np.fft.ifft
 
     # Check the grid sizes
@@ -329,6 +329,127 @@ def fourier_transform_imag(
     return greens_function.__class__(
         grid_out,
         array,
+        reduction=greens_function.reduction,
+        ordering=greens_function.ordering,
+        hermitian=greens_function.hermitian,
+    )
+
+
+
+def fourier_transform_real(
+    greens_function: Dynamic[BaseGrid],
+    grid: BaseGrid,
+    damping: float | None = None,
+) -> Dynamic[BaseGrid]:
+    """Fourier transform between real frequency and real time grids.
+
+    Args:
+        greens_function: Dynamic quantity in real frequency or time domain.
+        grid: Target grid for the Fourier transform.
+        damping: Optional exponential damping factor applied in time domain
+            as exp(-damping * |t|) when transforming time -> frequency.
+
+    Returns:
+        Dynamic quantity in the target domain.
+    """
+    grid_in, grid_out = greens_function.grid, grid
+    if (not grid_in.reality) or (not grid_out.reality) or (
+        {grid_in.domain, grid_out.domain} != {"frequency", "time"}
+    ):
+        raise ValueError("only real frequency and real time grids are supported.")
+    if greens_function.component != Component.FULL:
+        raise ValueError("only full component is supported.")
+    if not (grid_in.uniformly_spaced and grid_out.uniformly_spaced):
+        raise ValueError("only uniform grids are supported.")
+    if not (grid_in.uniformly_weighted and grid_out.uniformly_weighted):
+        raise ValueError("only uniform weights are supported.")
+
+    forward = grid_in.domain == "time"  # time -> frequency
+
+    time_grid = grid_in if forward else grid_out
+    freq_grid = grid_out if forward else grid_in
+
+    times = time_grid.points
+    freqs = freq_grid.points
+
+    dt = float(times[1] - times[0])
+    if not np.allclose(np.diff(times), dt):
+        raise ValueError("time grid must be uniformly spaced.")
+    if dt <= 0:
+        raise ValueError("time grid must be increasing.")
+
+    n_in = len(grid_in)
+    n_out = len(grid_out)
+    n_fft = max(n_in, n_out)
+
+    # FFT-compatible frequency grid (ascending) associated with this dt.
+    omega_fft = np.fft.fftshift(np.fft.fftfreq(n_fft, d=dt) * (2.0 * np.pi))
+    domega = float(omega_fft[1] - omega_fft[0])
+
+    # Basic sanity: require requested frequency spacing to match FFT spacing.
+    if len(freqs) > 1:
+        domega_req = float(freqs[1] - freqs[0])
+        if not np.allclose(np.diff(freqs), domega_req):
+            raise ValueError("frequency grid must be uniformly spaced.")
+        if not np.isclose(domega_req, domega, rtol=1e-7, atol=1e-12):
+            raise ValueError(
+                "frequency spacing is not FFT-compatible with time spacing: "
+                f"dω={domega_req} vs 2π/(N dt)={domega}."
+            )
+
+    # Optional warning if ranges look inconsistent.
+    if len(freqs) < len(times) // 2 and forward:
+        warnings.warn(
+            "Consider using comparable numbers of time and frequency points for FFT-based transforms.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
+    # Handle a constant time-origin shift: times need not be centred at 0.
+    # We assume times = t0 + (j - N/2) dt after fftshift; any constant shift is corrected.
+    idx = np.arange(n_fft)
+    t_expected = (idx - n_fft // 2) * dt
+    t_shift = float(times[0] - t_expected[0])
+
+    array = greens_function.array
+
+    if forward:
+        # time -> frequency: G(ω) ≈ dt * Σ_j e^{+i ω t_j} G(t_j)
+        # Implemented as: dt * N * FFTshift( IFFT( IFFTshift(G(t)) ) ) with phase for t_shift.
+        work = np.zeros((n_fft, *array.shape[1:]), dtype=complex)
+        work[: n_in] = array
+
+        if damping is not None and damping > 0:
+            t_full = t_expected + t_shift
+            work *= np.exp(-damping * np.abs(t_full))[:, None, None]
+
+        work = np.fft.ifftshift(work, axes=0)
+        work = np.fft.ifft(work, axis=0)
+        work = np.fft.fftshift(work, axes=0)
+
+        omega_full = omega_fft
+        work *= (dt * n_fft) * np.exp(1.0j * omega_full * t_shift)[:, None, None]
+
+        out = work[: n_out]
+
+    else:
+        # frequency -> time: G(t) ≈ (dω/2π) * Σ_k e^{-i ω t} G(ω)
+        # Implemented as: (dω/2π) * FFTshift( FFT( IFFTshift(G(ω)) ) ) with inverse phase.
+        work = np.zeros((n_fft, *array.shape[1:]), dtype=complex)
+        work[: n_in] = array
+
+        work = np.fft.ifftshift(work, axes=0)
+        work = np.fft.fft(work, axis=0)
+        work = np.fft.fftshift(work, axes=0)
+
+        t_full = t_expected + t_shift
+        work *= (domega / (2.0 * np.pi)) * np.exp(-1.0j * omega_fft * t_shift)[:, None, None]
+
+        out = work[: n_out]
+
+    return greens_function.__class__(
+        grid_out,
+        out,
         reduction=greens_function.reduction,
         ordering=greens_function.ordering,
         hermitian=greens_function.hermitian,

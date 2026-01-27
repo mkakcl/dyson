@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from dyson.representations.dynamic import Dynamic
     from dyson.representations.lehmann import Lehmann
     from dyson.typing import Array
+    from dyson.grids.frequency import GridRF, GridIF
 
 
 class BaseTimeGrid(BaseGrid):
@@ -163,6 +164,24 @@ class RealTimeGrid(BaseTimeGrid):
         points = np.linspace(start, stop, num, endpoint=True)
         return cls(points)
 
+    #TODO: implement for all classes
+    @classmethod
+    def from_inverse(cls, grid_rf: GridRF) -> RealTimeGrid:
+        """Create a real time grid from the inverse of a real frequency grid.
+
+        Args:
+            grid_rf: Real frequency grid.
+
+        Returns:
+            Real time grid.
+        """
+        if not grid_rf.uniformly_spaced:
+            raise NotImplementedError("only uniformly spaced grids are supported.")
+        spacing = 2.0 * np.pi / (grid_rf.separation * len(grid_rf))
+        num = len(grid_rf)
+        points = np.linspace(-spacing * num / 2, spacing * num / 2, num, endpoint=False)
+        return cls(points)
+
 
 GridRT = RealTimeGrid
 
@@ -200,14 +219,9 @@ class ImaginaryTimeGrid(BaseTimeGrid):
             Propagator on the grid.
         """
         grid = np.expand_dims(self.points, axis=tuple(range(1, energies.ndim + 1)))
-        energies = np.expand_dims(energies, axis=0)
-        fermi = 1.0 / (1.0 + np.exp(-self.beta * energies))
-        propagator_raw = np.exp(-energies * grid)
-        propagator = np.where(
-            grid > chempot,
-            propagator_raw * fermi,
-            propagator_raw * (fermi - 1.0),
-        )
+        energies = np.expand_dims(energies - chempot, axis=0)
+        fermi = 1.0 / (1.0 + np.exp(self.beta * energies))
+        propagator = np.exp(-energies * grid) * fermi
         return propagator.astype(np.complex128)
 
     def evaluate_tail(
