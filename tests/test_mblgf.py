@@ -71,8 +71,8 @@ def test_vs_exact_solver_central(
     if expression_h.nconfig > 1024 or expression_p.nconfig > 1024:
         pytest.skip("Skipping test for large Hamiltonian")
     if request.node.name in (
-        "test_vs_exact_solver_central[lih-sto3-CCSD-2]",
-        "test_vs_exact_solver_central[lih-sto3-CCSD-3]",
+        "test_vs_exact_solver_central[lih-sto3g-CCSD-2]",
+        "test_vs_exact_solver_central[lih-sto3g-CCSD-3]",
         "test_vs_exact_solver_central[h2o-sto3g-CCSD-2]",
         "test_vs_exact_solver_central[h2o-sto3g-CCSD-3]",
     ):
