@@ -340,8 +340,8 @@ def project_eigenvectors(
 
     # If the system is not hermitian, we need to ensure biorthonormality
     overlap = ket.conj() @ bra.T
-    orth, orth_error = matrix_power(overlap, -0.5, hermitian=hermitian, return_error=True)
-    unorth, unorth_error = matrix_power(overlap, 0.5, hermitian=hermitian, return_error=True)
+    orth, _ = matrix_power(overlap, -0.5, hermitian=hermitian, return_error=False)
+    unorth, _ = matrix_power(overlap, 0.5, hermitian=hermitian, return_error=False)
 
     # Work in an orthonormal physical basis
     bra = bra.T @ orth
