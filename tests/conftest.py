@@ -33,9 +33,9 @@ MOL_CACHE = {
         basis="sto-3g",
         verbose=0,
     ),
-    "he-ccpvdz": gto.M(
-        atom="He 0 0 0",
-        basis="cc-pvdz",
+    "lih-sto3g": gto.M(
+        atom="Li 0 0 0; H 0 0 1.64",
+        basis="sto-3g",
         verbose=0,
     ),
 }
@@ -43,7 +43,7 @@ MOL_CACHE = {
 MF_CACHE = {
     "h2-631g": scf.RHF(MOL_CACHE["h2-631g"]).run(conv_tol=1e-12),
     "h2o-sto3g": scf.RHF(MOL_CACHE["h2o-sto3g"]).run(conv_tol=1e-12),
-    "he-ccpvdz": scf.RHF(MOL_CACHE["he-ccpvdz"]).run(conv_tol=1e-12),
+    "lih-sto3g": scf.RHF(MOL_CACHE["lih-sto3g"]).run(conv_tol=1e-12),
 }
 
 for key, mf in MF_CACHE.items():
