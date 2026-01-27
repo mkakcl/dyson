@@ -16,6 +16,8 @@ from dyson.typing import Array
 if TYPE_CHECKING:
     from typing import Any
 
+    from typing_extensions import Self
+
     from dyson.expressions.expression import BaseExpression
     from dyson.representations.dynamic import Dynamic
     from dyson.representations.spectral import Spectral
@@ -32,7 +34,7 @@ class BaseSolver(ABC):
         def wrap_init(init: Any) -> Any:
             """Wrapper to call __post_init__ after __init__."""
 
-            def wrapped_init(self: BaseSolver, *args: Any, **kwargs: Any) -> None:
+            def wrapped_init(self: Self, *args: Any, **kwargs: Any) -> None:
                 init(self, *args, **kwargs)
                 if init.__name__ == "__init__":
                     self.__log_init__()
@@ -43,7 +45,7 @@ class BaseSolver(ABC):
         def wrap_kernel(kernel: Any) -> Any:
             """Wrapper to call __post_kernel__ after kernel."""
 
-            def wrapped_kernel(self: BaseSolver, *args: Any, **kwargs: Any) -> Any:
+            def wrapped_kernel(self: Self, *args: Any, **kwargs: Any) -> Any:
                 result = kernel(self, *args, **kwargs)
                 if kernel.__name__ == "kernel":
                     self.__post_kernel__()
@@ -112,7 +114,7 @@ class BaseSolver(ABC):
         self_energy: Lehmann,
         overlap: Array | None = None,
         **kwargs: Any,
-    ) -> BaseSolver:
+    ) -> Self:
         """Create a solver from a self-energy.
 
         Args:
@@ -132,7 +134,7 @@ class BaseSolver(ABC):
 
     @classmethod
     @abstractmethod
-    def from_expression(cls, expression: BaseExpression, **kwargs: Any) -> BaseSolver:
+    def from_expression(cls, expression: BaseExpression, **kwargs: Any) -> Self:
         """Create a solver from an expression.
 
         Args:

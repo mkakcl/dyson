@@ -188,54 +188,9 @@ class HF_1p(BaseHF):  # pylint: disable=invalid-name
         return self.nvir
 
 
-class HF_Dyson(BaseHF):  # pylint: disable=invalid-name
-    """HF expressions for the Dyson Green's function."""
-
-    def diagonal(self) -> Array:
-        """Get the diagonal of the Hamiltonian.
-
-        Returns:
-            Diagonal of the Hamiltonian.
-        """
-        return self.mo_energy
-
-    def get_excitation_vector(self, orbital: int) -> Array:
-        r"""Obtain the vector corresponding to a fermionic operator acting on the ground state.
-
-        This vector is a generalisation of
-
-        .. math::
-            f_i^{\pm} \left| \Psi_0 \right>
-
-        where :math:`f_i^{\pm}` is the fermionic creation or annihilation operator, or a product
-        thereof, depending on the particular expression and what Green's function it corresponds to.
-
-        The vector defines the excitaiton manifold probed by the Green's function corresponding to
-        the expression.
-
-        Args:
-            orbital: Orbital index.
-
-        Returns:
-            Excitation vector.
-        """
-        return util.unit_vector(self.shape[0], orbital)
-
-    @property
-    def nsingle(self) -> int:
-        """Number of configurations in the singles sector."""
-        return self.nocc + self.nvir
-
-    @property
-    def non_dyson(self) -> bool:
-        """Whether the expression produces a non-Dyson Green's function."""
-        return False
-
-
 class HF(ExpressionCollection):
     """Collection of HF expressions for different parts of the Green's function."""
 
     _hole = HF_1h
     _particle = HF_1p
-    _dyson = HF_Dyson
     _name = "HF"

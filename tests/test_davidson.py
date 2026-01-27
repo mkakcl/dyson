@@ -30,8 +30,6 @@ def test_vs_exact_solver(
     expression = expression_cls.from_mf(mf)
     if expression.nconfig > 1024:  # TODO: Make larger for CI runs?
         pytest.skip("Skipping test for large Hamiltonian")
-    if expression.nsingle == (expression.nocc + expression.nvir):
-        pytest.skip("Skipping test for central Hamiltonian")
     bra: Array = np.array(expression.get_excitation_bras())
     ket: Array = np.array(expression.get_excitation_kets())
 
@@ -81,8 +79,6 @@ def test_vs_exact_solver_central(
 ) -> None:
     """Test the exact solver for central moments."""
     # Get the quantities required from the expressions
-    if "o" not in expression_method or "p" not in expression_method:
-        pytest.skip("Skipping test for Dyson only expression")
     expression_h = expression_method.h.from_mf(mf)
     expression_p = expression_method.p.from_mf(mf)
     if expression_h.nconfig > 1024 or expression_p.nconfig > 1024:
@@ -153,8 +149,13 @@ def test_vs_exact_solver_central(
         assert helper.have_equal_moments(self_energy, self_energy_exact, 2)
 
     # Use the component-wise solvers
-    result_exact = Spectral.combine(exact_h.result, exact_p.result)
-    result_davidson = Spectral.combine(davidson_h.result, davidson_p.result)
+    overlap = expression_h.build_overlap() + expression_p.build_overlap()
+    result_exact = Spectral.combine_for_greens_function(
+        exact_h.result, exact_p.result, overlap=overlap
+    )
+    result_davidson = Spectral.combine_for_greens_function(
+        davidson_h.result, davidson_p.result, overlap=overlap
+    )
 
     # Get the self-energy and Green's function from the Davidson solver
     static = result_davidson.get_static_self_energy()

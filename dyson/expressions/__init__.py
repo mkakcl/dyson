@@ -81,7 +81,6 @@ Submodules
     ccsd
     fci
     adc
-    gw
     hamiltonian
 
 """
@@ -90,5 +89,4 @@ from dyson.expressions.hf import HF
 from dyson.expressions.ccsd import CCSD
 from dyson.expressions.fci import FCI
 from dyson.expressions.adc import ADC2, ADC2x
-from dyson.expressions.gw import TDAGW
 from dyson.expressions.hamiltonian import Hamiltonian
