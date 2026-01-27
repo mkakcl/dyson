@@ -8,7 +8,7 @@ solution, and the resulting self-energy and Green's function.
 
 from pyscf import gto, scf
 
-from dyson import MBLSE, FCI, AufbauPrinciple, AuxiliaryShift, Exact, Spectral
+from dyson import FCI, MBLSE, AufbauPrinciple, AuxiliaryShift, Exact, Spectral
 
 # Get a molecule and mean-field from PySCF
 mol = gto.M(atom="Li 0 0 0; H 0 0 1.64", basis="sto-3g", verbose=0)

@@ -7,7 +7,7 @@ Green's function.
 
 from pyscf import gto, scf
 
-from dyson import MBLGF, FCI, AufbauPrinciple, Exact, Spectral
+from dyson import FCI, MBLGF, AufbauPrinciple, Exact, Spectral
 from dyson.solvers.static.chempot import search_aufbau_global
 
 # Get a molecule and mean-field from PySCF

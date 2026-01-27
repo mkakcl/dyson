@@ -15,7 +15,7 @@ is favoured according to a parameter.
 
 from pyscf import gto, scf
 
-from dyson import MBLSE, FCI, AufbauPrinciple, AuxiliaryShift, DensityRelaxation, Exact, Spectral
+from dyson import FCI, MBLSE, AufbauPrinciple, AuxiliaryShift, DensityRelaxation, Exact, Spectral
 from dyson.solvers.static.density import get_fock_matrix_function
 
 # Get a molecule and mean-field from PySCF
