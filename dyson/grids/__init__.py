@@ -17,12 +17,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from dyson import numpy as np
 from dyson.grids.frequency import RealFrequencyGrid, GridRF
 from dyson.grids.frequency import ImaginaryFrequencyGrid, GridIF
 from dyson.grids.time import RealTimeGrid, GridRT
 from dyson.grids.time import ImaginaryTimeGrid, GridIT
 from dyson.grids.fourier import fourier_transform_imag, fourier_transform_real
 from dyson.grids.pade import analytic_continuation_freq_pade
+from dyson.grids.util import are_dual
 
 if TYPE_CHECKING:
     from typing import Any

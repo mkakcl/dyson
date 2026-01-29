@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 def _pade_coefficients(
     greens_function: Dynamic[BaseFrequencyGrid],
-    tail_moments: tuple[np.ndarray, ...] | None = None,
+    tail_moments: tuple[Array, ...] | None = None,
 ) -> Array:
     """Get the coefficient for the Pade approximation for a frequency domain function.
 
@@ -36,7 +36,7 @@ def _pade_coefficients(
     # Initialise the coefficients
     resolvent = grid.resolvent(np.array(0.0), 0.0, invert=False, ordering=greens_function.ordering)
     coefficients = greens_function.array.copy()
-    if tail_moments:
+    if tail_moments is not None:
         coefficients -= grid.evaluate_tail(tail_moments, ordering=greens_function.ordering)
 
     # Recursively compute the coefficients
@@ -53,7 +53,7 @@ def evaluate_pade(
     grid_old: BaseFrequencyGrid,
     grid_new: BaseFrequencyGrid,
     ordering: Ordering = Ordering.RETARDED,
-    tail_moments: tuple[np.ndarray, ...] | None = None,
+    tail_moments: tuple[Array, ...] | None = None,
 ) -> Array:
     """Evaluate the Pade approximation on a new frequency grid.
 
@@ -82,7 +82,7 @@ def evaluate_pade(
         term = 1.0 + util.einsum("w,w...->w...", resolvent_new - resolvent_old[i], array)
         array = coefficients[i] / term
 
-    if tail_moments:
+    if tail_moments is not None:
         # Add tail contribution
         array += grid_new.evaluate_tail(tail_moments, ordering=ordering)
 

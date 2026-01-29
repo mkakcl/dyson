@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from typing import TYPE_CHECKING
+from typing_extensions import Self
 
 import scipy.special
 
@@ -15,6 +16,7 @@ from dyson.representations.enums import Component, Ordering, Reduction
 if TYPE_CHECKING:
     from typing import Any, Iterable
 
+    from dyson.grids.time import RealTimeGrid, ImaginaryTimeGrid
     from dyson.representations.dynamic import Dynamic
     from dyson.representations.lehmann import Lehmann
     from dyson.typing import Array
@@ -38,7 +40,7 @@ class BaseFrequencyGrid(BaseGrid):
         """
         resolvent = self.resolvent(np.array(0.0), 0.0, ordering=ordering, invert=True)
         tail = sum(
-            util.einsum("...,w->w...", moment, resolvent ** (i + 1))
+            -util.einsum("...,w->w...", moment, resolvent ** (i + 1))
             for i, moment in enumerate(moments)
         )
         return tail
@@ -168,9 +170,7 @@ class RealFrequencyGrid(BaseFrequencyGrid):
         return 1.0 / denominator if invert else denominator
 
     @classmethod
-    def from_uniform(
-        cls, start: float, stop: float, num: int, eta: float | None = None
-    ) -> RealFrequencyGrid:
+    def from_uniform(cls, start: float, stop: float, num: int, eta: float | None = None) -> Self:
         """Create a uniform real frequency grid.
 
         Args:
@@ -184,6 +184,25 @@ class RealFrequencyGrid(BaseFrequencyGrid):
         """
         points = np.linspace(start, stop, num, endpoint=True)
         return cls(points, eta=eta)
+
+    @classmethod
+    def from_dual(cls, other: RealTimeGrid) -> Self:
+        """Create a grid from another grid in the dual domain (real time).
+
+        Args:
+            other: Other (real time) grid to create from.
+
+        Returns:
+            Real frequency grid.
+        """
+        if not other.uniformly_spaced:
+            raise NotImplementedError("only uniformly spaced grids are supported.")
+        if not other.uniformly_weighted:
+            raise NotImplementedError("only uniformly weighted grids are supported.")
+        spacing = 2.0 * np.pi / (other.separation * len(other))
+        num = len(other)
+        points = np.linspace(-spacing * (num - 1) / 2, spacing * (num + 1) / 2, num, endpoint=False)
+        return cls(points, eta=other.eta)
 
 
 GridRF = RealFrequencyGrid
@@ -250,7 +269,7 @@ class ImaginaryFrequencyGrid(BaseFrequencyGrid):
         return 1.0 / denominator if invert else denominator
 
     @classmethod
-    def from_uniform(cls, num: int, beta: float | None = None) -> ImaginaryFrequencyGrid:
+    def from_uniform(cls, num: int, beta: float | None = None) -> Self:
         """Create a uniform imaginary frequency grid.
 
         Args:
@@ -269,7 +288,7 @@ class ImaginaryFrequencyGrid(BaseFrequencyGrid):
     @classmethod
     def from_legendre(
         cls, num: int, diffuse_factor: float = 1.0, beta: float | None = None
-    ) -> ImaginaryFrequencyGrid:
+    ) -> Self:
         """Create a Legendre imaginary frequency grid.
 
         Args:
@@ -283,6 +302,22 @@ class ImaginaryFrequencyGrid(BaseFrequencyGrid):
         points, weights = scipy.special.roots_legendre(num)
         points = (1 - points) / (diffuse_factor * (1 + points))
         return cls(points, weights=weights, beta=beta)
+
+    @classmethod
+    def from_dual(cls, other: ImaginaryTimeGrid) -> Self:
+        """Create a grid from another grid in the dual domain (imaginary time).
+
+        Args:
+            other: Other (imaginary time) grid to create from.
+
+        Returns:
+            Imaginary frequency grid.
+        """
+        if not other.uniformly_spaced:
+            raise NotImplementedError("only uniformly spaced grids are supported.")
+        if not other.uniformly_weighted:
+            raise NotImplementedError("only uniformly weighted grids are supported.")
+        return cls.from_uniform(len(other) // 2, other.beta)  # Use τ:ω ratio of 2:1
 
 
 GridIF = ImaginaryFrequencyGrid

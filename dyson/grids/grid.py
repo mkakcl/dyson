@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
+from typing_extensions import Self
 
 from dyson import numpy as np
 from dyson import util
@@ -160,6 +161,19 @@ class BaseGrid(ABC):
 
         Returns:
             Values of the tail expansion on the grid.
+        """
+        pass
+
+    @classmethod
+    @abstractmethod
+    def from_dual(cls, other: BaseGrid) -> Self:
+        """Create a grid from another grid in the dual domain.
+
+        Args:
+            other: Other grid to create from.
+
+        Returns:
+            Grid.
         """
         pass
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import TYPE_CHECKING
 from math import factorial
+from typing_extensions import Self
 
 from dyson import numpy as np
 from dyson import util
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
     from dyson.representations.dynamic import Dynamic
     from dyson.representations.lehmann import Lehmann
     from dyson.typing import Array
-    from dyson.grids.frequency import GridRF, GridIF
+    from dyson.grids.frequency import RealFrequencyGrid, ImaginaryFrequencyGrid
 
 
 class BaseTimeGrid(BaseGrid):
@@ -69,6 +70,10 @@ class BaseTimeGrid(BaseGrid):
 class RealTimeGrid(BaseTimeGrid):
     """Real time grid."""
 
+    eta: float = 1e-2
+
+    _options = {"eta"}
+
     def __init__(  # noqa: D417
         self, points: Array, weights: Array | None = None, **kwargs: Any
     ) -> None:
@@ -77,6 +82,7 @@ class RealTimeGrid(BaseTimeGrid):
         Args:
             points: Points of the grid.
             weights: Weights of the grid.
+            eta: Broadening factor.
         """
         self._points = np.asarray(points)
         self._weights = np.asarray(weights) if weights is not None else None
@@ -84,21 +90,17 @@ class RealTimeGrid(BaseTimeGrid):
 
     @staticmethod
     def _heaviside(points: Array, energies: Array, ordering: Ordering) -> Array:
-        """Get the Heaviside term with complex phase."""
+        """Get the Heaviside term."""
         ordering = Ordering(ordering)
         theta: Array
         if ordering == ordering.ORDERED:
-            pos = -1.0j * (points > 0).astype(np.float64) + 0.5 * (points == 0).astype(np.float64)
-            neg = 1.0j * (points < 0).astype(np.float64) + 0.5 * (points == 0).astype(np.float64)
             occ = (energies < 0).astype(np.float64)
             vir = 1.0 - occ
-            theta = pos * occ + neg * vir
-        elif ordering == ordering.ADVANCED:
-            pos = -1.0j * (points > 0).astype(np.float64) + 0.5 * (points == 0).astype(np.float64)
-            theta = pos
+            theta = occ * np.heaviside(points, 0.5) - vir * np.heaviside(-points, 0.5)
         elif ordering == ordering.RETARDED:
-            neg = 1.0j * (points < 0).astype(np.float64) + 0.5 * (points == 0).astype(np.float64)
-            theta = neg
+            theta = -np.heaviside(-points, 0.5)
+        elif ordering == ordering.ADVANCED:
+            theta = np.heaviside(points, 0.5)
         else:
             ordering.raise_invalid_representation()
         return theta
@@ -121,9 +123,15 @@ class RealTimeGrid(BaseTimeGrid):
         """
         grid = np.expand_dims(self.points, axis=tuple(range(1, energies.ndim + 1)))
         energies = np.expand_dims(energies, axis=0)
-        phase = np.exp(-1.0j * grid * energies)
+        if ordering == Ordering.RETARDED:
+            phase = np.exp(-grid * self.eta)
+        elif ordering == Ordering.ADVANCED:
+            phase = np.exp(grid * self.eta)
+        else:
+            phase = np.exp(-np.abs(grid) * self.eta)
         theta = self._heaviside(grid, energies - chempot, ordering)
-        return phase * theta
+        propagator = 1.0j * phase * np.exp(1.0j * grid * energies) * theta
+        return propagator
 
     def evaluate_tail(
         self,
@@ -150,37 +158,39 @@ class RealTimeGrid(BaseTimeGrid):
         return True
 
     @classmethod
-    def from_uniform(cls, start: float, stop: float, num: int) -> RealTimeGrid:
+    def from_uniform(cls, start: float, stop: float, num: int, eta: float | None = None) -> Self:
         """Create a uniform real time grid.
 
         Args:
             start: Start of the grid.
             stop: End of the grid.
             num: Number of points in the grid.
+            eta: Broadening factor.
 
         Returns:
             Uniform real time grid.
         """
         points = np.linspace(start, stop, num, endpoint=True)
-        return cls(points)
+        return cls(points, eta=eta)
 
-    #TODO: implement for all classes
     @classmethod
-    def from_inverse(cls, grid_rf: GridRF) -> RealTimeGrid:
-        """Create a real time grid from the inverse of a real frequency grid.
+    def from_dual(cls, other: RealFrequencyGrid) -> Self:
+        """Create a grid from another grid in the dual domain (real frequency).
 
         Args:
-            grid_rf: Real frequency grid.
+            other: Other (real frequency) grid to create from.
 
         Returns:
             Real time grid.
         """
-        if not grid_rf.uniformly_spaced:
+        if not other.uniformly_spaced:
             raise NotImplementedError("only uniformly spaced grids are supported.")
-        spacing = 2.0 * np.pi / (grid_rf.separation * len(grid_rf))
-        num = len(grid_rf)
+        if not other.uniformly_weighted:
+            raise NotImplementedError("only uniformly weighted grids are supported.")
+        spacing = 2.0 * np.pi / (other.separation * len(other))
+        num = len(other)
         points = np.linspace(-spacing * num / 2, spacing * num / 2, num, endpoint=False)
-        return cls(points)
+        return cls(points, eta=other.eta)
 
 
 GridRT = RealTimeGrid
@@ -273,7 +283,7 @@ class ImaginaryTimeGrid(BaseTimeGrid):
         return -(self.points[0] + self.points[-1])
 
     @classmethod
-    def from_uniform(cls, num: int, beta: float) -> ImaginaryTimeGrid:
+    def from_uniform(cls, num: int, beta: float) -> Self:
         """Create a uniform real time grid.
 
         Args:
@@ -286,6 +296,22 @@ class ImaginaryTimeGrid(BaseTimeGrid):
         spacing = beta / num
         points = np.linspace(-beta + spacing * 0.5, -spacing * 0.5, num, endpoint=True)
         return cls(points)
+
+    @classmethod
+    def from_dual(cls, other: ImaginaryFrequencyGrid) -> Self:
+        """Create a grid from another grid in the dual domain (imaginary frequency).
+
+        Args:
+            other: Other (imaginary frequency) grid to create from.
+
+        Returns:
+            Imaginary time grid.
+        """
+        if not other.uniformly_spaced:
+            raise NotImplementedError("only uniformly spaced grids are supported.")
+        if not other.uniformly_weighted:
+            raise NotImplementedError("only uniformly weighted grids are supported.")
+        return cls.from_uniform(len(other) * 2, other.beta)  # Use τ:ω ratio of 2:1
 
 
 GridIT = ImaginaryTimeGrid
