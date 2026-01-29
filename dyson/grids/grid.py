@@ -148,22 +148,6 @@ class BaseGrid(ABC):
             hermitian=lehmann.hermitian,
         )
 
-    @abstractmethod
-    def evaluate_tail(
-        self,
-        moments: Iterable[Array],
-        ordering: Ordering = Ordering.ORDERED,
-    ) -> Array:
-        """Evaluate the tail on the grid, via a moment expansion.
-
-        Args:
-            moments: Moments of the tail expansion.
-
-        Returns:
-            Values of the tail expansion on the grid.
-        """
-        pass
-
     @classmethod
     @abstractmethod
     def from_dual(cls, other: BaseGrid) -> Self:

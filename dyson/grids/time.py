@@ -133,21 +133,6 @@ class RealTimeGrid(BaseTimeGrid):
         propagator = 1.0j * phase * np.exp(1.0j * grid * energies) * theta
         return propagator
 
-    def evaluate_tail(
-        self,
-        moments: Iterable[Array],
-        ordering: Ordering = Ordering.ORDERED,
-    ) -> Array:
-        """Evaluate the tail (short time) on the grid, via a moment expansion.
-
-        Args:
-            moments: Moments of the tail expansion.
-
-        Returns:
-            Values of the tail expansion on the grid.
-        """
-        raise NotImplementedError
-
     @property
     def reality(self) -> bool:
         """Get the reality of the grid.
@@ -233,36 +218,6 @@ class ImaginaryTimeGrid(BaseTimeGrid):
         fermi = 1.0 / (1.0 + np.exp(self.beta * energies))
         propagator = np.exp(-energies * grid) * fermi
         return propagator.astype(np.complex128)
-
-    def evaluate_tail(
-        self,
-        moments: Iterable[Array],
-        ordering: Ordering = Ordering.ORDERED,
-    ) -> Array:
-        """Evaluate the tail (short time) on the grid, via a moment expansion.
-
-        Args:
-            moments: Moments of the tail expansion.
-
-        Returns:
-            Values of the tail expansion on the grid.
-        """
-        orders = [
-            lambda x: -1/2 * np.sign(x),
-            lambda x: -1/4 * (self.beta - 2.0 * np.abs(x)),
-            lambda x: +1/4 * x * (self.beta - np.abs(x)),
-            lambda x: +1/48 * (self.beta**3 - 6.0 * self.beta * x ** 2 + 4.0 * np.abs(x ** 3)),
-            lambda x: -1/48 * x * (self.beta**3 - 2.0 * self.beta * x ** 2 + np.abs(x ** 3)),
-        ]
-        tail: Array = 0.0
-        for i, moment in enumerate(moments):
-            if i >= len(orders):
-                raise NotImplementedError(
-                    f"{self.__class__.__name__}.evaluate_tail only supports up to order "
-                    f"{len(orders)-1}."
-                )
-            tail -= util.einsum("...,w->w...", moment, orders[i](self.points))
-        return tail
 
     @property
     def reality(self) -> bool:

@@ -25,26 +25,6 @@ if TYPE_CHECKING:
 class BaseFrequencyGrid(BaseGrid):
     """Base class for frequency grids."""
 
-    def evaluate_tail(
-        self,
-        moments: Iterable[Array],
-        ordering: Ordering = Ordering.ORDERED,
-    ) -> Array:
-        """Evaluate the tail (high frequency) on the grid, via a moment expansion.
-
-        Args:
-            moments: Moments of the tail expansion.
-
-        Returns:
-            Values of the tail expansion on the grid.
-        """
-        resolvent = self.resolvent(np.array(0.0), 0.0, ordering=ordering, invert=True)
-        tail = sum(
-            -util.einsum("...,w->w...", moment, resolvent ** (i + 1))
-            for i, moment in enumerate(moments)
-        )
-        return tail
-
     @property
     def domain(self) -> str:
         """Get the domain of the grid.

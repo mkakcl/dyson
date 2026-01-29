@@ -14,15 +14,11 @@ if TYPE_CHECKING:
     from dyson.typing import Array
 
 
-def _pade_coefficients(
-    greens_function: Dynamic[BaseFrequencyGrid],
-    tail_moments: tuple[Array, ...] | None = None,
-) -> Array:
+def _pade_coefficients(greens_function: Dynamic[BaseFrequencyGrid]) -> Array:
     """Get the coefficient for the Pade approximation for a frequency domain function.
 
     Args:
         greens_function: Dynamic quantity in frequency domain.
-        tail_moments: Moments of the high-frequency tail.
 
     Returns:
         Coefficients for the Pade approximation.
@@ -36,8 +32,6 @@ def _pade_coefficients(
     # Initialise the coefficients
     resolvent = grid.resolvent(np.array(0.0), 0.0, invert=False, ordering=greens_function.ordering)
     coefficients = greens_function.array.copy()
-    if tail_moments is not None:
-        coefficients -= grid.evaluate_tail(tail_moments, ordering=greens_function.ordering)
 
     # Recursively compute the coefficients
     for i in range(len(grid) - 1):
@@ -53,7 +47,6 @@ def evaluate_pade(
     grid_old: BaseFrequencyGrid,
     grid_new: BaseFrequencyGrid,
     ordering: Ordering = Ordering.RETARDED,
-    tail_moments: tuple[Array, ...] | None = None,
 ) -> Array:
     """Evaluate the Pade approximation on a new frequency grid.
 
@@ -62,7 +55,6 @@ def evaluate_pade(
         grid_old: Original frequency grid.
         grid_new: New frequency grid.
         ordering: Ordering of the Green's function.
-        tail_moments: Moments of the high-frequency tail on the new grid.
 
     Returns:
         Dynamic quantity on the new frequency grid.
@@ -82,36 +74,29 @@ def evaluate_pade(
         term = 1.0 + util.einsum("w,w...->w...", resolvent_new - resolvent_old[i], array)
         array = coefficients[i] / term
 
-    if tail_moments is not None:
-        # Add tail contribution
-        array += grid_new.evaluate_tail(tail_moments, ordering=ordering)
-
     return array
 
 
 def analytic_continuation_freq_pade(
     greens_function: Dynamic[BaseFrequencyGrid],
     grid: BaseFrequencyGrid,
-    tail_moments: tuple[Array, ...] | None = None,
 ) -> Dynamic[BaseFrequencyGrid]:
     """Perform analytic continuation in the frequency domain using the Pade approximation.
 
     Args:
         greens_function_if: Green's function in a frequency domain.
         grid_rf: Real frequency grid to continue to.
-        tail_moments: Moments of the high-frequency tail.
 
     Returns:
         Green's function in the conjugate frequency domain.
     """
     if greens_function.ordering == Ordering.ORDERED:
         raise ValueError("Pade approximation not defined for time-ordered Green's functions.")
-    coefficients = _pade_coefficients(greens_function, tail_moments)
+    coefficients = _pade_coefficients(greens_function)
     array = evaluate_pade(
         coefficients,
         greens_function.grid,
         grid,
-        tail_moments=tail_moments,
         ordering=greens_function.ordering,
     )
     return greens_function.__class__(

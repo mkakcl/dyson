@@ -18,17 +18,12 @@ if TYPE_CHECKING:
     from dyson.typing import Array
 
 
-def fourier_transform_imag(
-    greens_function: Dynamic[BaseGrid],
-    grid: BaseGrid,
-    tail_moments: tuple[Array, ...] | None = None,
-) -> Dynamic[BaseGrid]:
+def fourier_transform_imag(greens_function: Dynamic[BaseGrid], grid: BaseGrid) -> Dynamic[BaseGrid]:
     """Fourier transform between imaginary frequency and imaginary time grids.
 
     Args:
         greens_function: Dynamic quantity in imaginary frequency or time domain.
         grid: Target grid for the Fourier transform.
-        tail_moments: Moments of the high-frequency tail.
 
     Returns:
         Dynamic quantity in the target domain.
@@ -62,8 +57,6 @@ def fourier_transform_imag(
 
     # Get the input array
     array = greens_function.array.copy()
-    if tail_moments is not None:
-        array -= grid_in.evaluate_tail(tail_moments, ordering=greens_function.ordering)
 
     # Perform the Fourier transform
     array = util.einsum("w...,w->w...", array, shifts[0])
@@ -72,10 +65,6 @@ def fourier_transform_imag(
 
     # Normalise
     array *= norm
-
-    # Add tail
-    if tail_moments is not None:
-        array += grid_out.evaluate_tail(tail_moments, ordering=greens_function.ordering)
 
     return greens_function.__class__(
         grid_out,
@@ -86,17 +75,12 @@ def fourier_transform_imag(
     )
 
 
-def fourier_transform_real(
-    greens_function: Dynamic[BaseGrid],
-    grid: BaseGrid,
-    tail_moments: tuple[Array, ...] | None = None,
-) -> Dynamic[BaseGrid]:
+def fourier_transform_real(greens_function: Dynamic[BaseGrid], grid: BaseGrid) -> Dynamic[BaseGrid]:
     """Fourier transform between real frequency and imaginary time grids.
 
     Args:
         greens_function: Dynamic quantity in real frequency or time domain.
         grid: Target grid for the Fourier transform.
-        tail_moments: Moments of the high-frequency tail.
 
     Returns:
         Dynamic quantity in the target domain.
@@ -122,8 +106,6 @@ def fourier_transform_real(
 
     # Get the input array
     array = greens_function.array.copy()
-    if tail_moments is not None:
-        array -= grid_in.evaluate_tail(tail_moments, ordering=greens_function.ordering)
 
     # Perform the Fourier transform
     array = np.fft.ifftshift(array, axes=0)
@@ -132,10 +114,6 @@ def fourier_transform_real(
 
     # Normalise
     array *= norm
-
-    # Add tail
-    if tail_moments is not None:
-        array += grid_out.evaluate_tail(tail_moments, ordering=greens_function.ordering)
 
     return greens_function.__class__(
         grid_out,
