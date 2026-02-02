@@ -938,8 +938,8 @@ class Lehmann(BaseRepresentation):
         Raises:
             ValueError: If the Lehmann representation is already Hermitian.
         """
-        if self.hermitian:  # type: ignore[unreachable]
-            raise ValueError("Lehmann representation is already Hermitian.")
+        if self.hermitian:  
+            return self
         
         energies = self.energies.real
         coup_l, coup_r = self.unpack_couplings()

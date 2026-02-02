@@ -114,13 +114,14 @@ class Spectral(BaseRepresentation):
         )
     
     @classmethod
-    def from_poles(cls, 
-                   energies: Array, 
-                   residues: Array,
-                   chempot: float | None = None,
-                   tol: float = 1e-12,
-                   assume_non_degenerate: bool = False,
-                   use_svd: bool = True) -> Spectral:
+    def from_poles(
+        cls, 
+        energies: Array, 
+        residues: Array,
+        chempot: float | None = None,
+        tol: float = 1e-12,
+        assume_non_degenerate: bool = False,
+        use_svd: bool = True) -> Spectral:
         """ Build a spectral represntation from a set of pole energies and residues.
 
             Args:
@@ -198,6 +199,37 @@ class Spectral(BaseRepresentation):
         """
         left, right = util.unpack_vectors(self.eigvecs)
         return util.einsum("pk,qk,k->pq", right[slices[0]], left[slices[1]].conj(), self.eigvals)
+
+
+    def get_matrix(self) -> Array:
+        """Get the full matrix.
+
+        Returns:
+            Full matrix.
+        """
+        return self._get_matrix_block((slice(None), slice(None)))
+    
+    def get_arrowhead(self) -> Array:
+        """Get the arrowhead matrix from which the spectrum is derived.
+
+        Returns:
+            Arrowhead matrix.
+        """
+        
+        arrowhead = np.zeros((self.eigvals.shape[0], self.eigvals.shape[0]), dtype=self.eigvals.dtype)
+        phys = slice(None, self.nphys)
+        aux = slice(self.nphys, None)
+        arrowhead[phys, phys] = self.get_static_self_energy()
+        se = self.get_self_energy()
+        arrowhead[aux, aux] = np.diag(se.energies)
+        left, right = util.unpack_vectors(se.couplings)
+        arrowhead[phys, aux] = right
+        arrowhead[aux, phys] = left.conj().T
+
+        print("Arrowhead reconstruction error: %s"%np.linalg.norm(self.get_matrix() - arrowhead))
+        print("Eigenvalue reconstruction error: %s"%np.linalg.norm(self.eigvals - np.linalg.eigvalsh(arrowhead)))
+        #assert np.allclose(self.eigvals, np.linalg.eigvalsh(arrowhead))
+        return arrowhead
 
     def get_static_self_energy(self) -> Array:
         """Get the static part of the self-energy.
@@ -448,7 +480,7 @@ class Spectral(BaseRepresentation):
             #rest_l, rest_r = util.null_space_basis(mat, hermitian=hermitian, method=ns_method)
 
             #rest_l, rest_r = util.biorthonormalise(rest_l, rest_r)
-            #print("L R - I : %s"%np.linalg.norm(rest_l.T.conj() @ rest_r - np.eye(rest_l.shape[1])))
+            print("L R - I : %s"%np.linalg.norm(rest_l.T.conj() @ rest_r - np.eye(rest_l.shape[1])))
             vectors_l = np.block([left.T, rest_l]).T
             vectors_r = np.block([right.T, rest_r]).T
             vectors = np.array([vectors_l, vectors_r])
