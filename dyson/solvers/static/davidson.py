@@ -21,7 +21,7 @@ from dyson import numpy as np
 from dyson.representations.lehmann import Lehmann
 from dyson.representations.spectral import Spectral
 from dyson.solvers.solver import StaticSolver
-from dyson.solvers.static.exact import orthogonalise_self_energy, project_eigenvectors
+from dyson.solvers.static.exact import orthogonalise_self_energy
 
 if TYPE_CHECKING:
     from typing import Any, Callable
@@ -299,7 +299,9 @@ class Davidson(StaticSolver):
         converged = converged[mask]
 
         # Get the full map onto physical + auxiliary and rotate the eigenvectors
-        eigvecs = project_eigenvectors(eigvecs, self.bra, self.ket if not self.hermitian else None)
+        eigvecs = util.project_eigenvectors(
+            eigvecs, self.bra, self.ket if not self.hermitian else None
+        )
 
         # Store the results
         self.result = Spectral(eigvals, eigvecs, self.nphys)

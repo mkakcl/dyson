@@ -96,6 +96,7 @@ class Spectral(BaseRepresentation):
         static: Array,
         self_energy: Lehmann,
         overlap: Array | None = None,
+        sort: bool = False,
     ) -> Spectral:
         """Create a spectrum from a self-energy.
 
@@ -103,6 +104,7 @@ class Spectral(BaseRepresentation):
             static: Static part of the self-energy.
             self_energy: Self-energy.
             overlap: Overlap matrix for the physical space.
+            sort: Sort the eigenfunctions by eigenvalue.
 
         Returns:
             Spectrum object.
@@ -111,6 +113,7 @@ class Spectral(BaseRepresentation):
             *self_energy.diagonalise_matrix(static, overlap=overlap),
             self_energy.nphys,
             chempot=self_energy.chempot,
+            sort=sort,
         )
     
     @classmethod
@@ -334,228 +337,50 @@ class Spectral(BaseRepresentation):
             chempot = 0.0
         return Lehmann(*self.get_dyson_orbitals(), chempot=chempot)
 
-    def combine(self, *args: Spectral, chempot: float | None = None) -> Spectral:
-        """Combine multiple spectral representations by concatenating self-energies.
+    @classmethod
+    def combine_for_greens_function(
+        cls,
+        *spectrals: Spectral,
+        overlap: Array | None = None,
+        chempot: float | None = None,
+    ) -> Spectral:
+        """Combine multiple spectral representations to conserve the Green's functions.
 
         Args:
-            args: Spectral representations to combine.
-            chempot: Chemical potential to be used in the Lehmann representations of the self-energy
-                and Green's function.
+            *spectrals: Spectral representations to combine.
+            overlap: Overlap matrix for the physical space. If not passed, the overlap matrices from
+                the individual spectral representations will be summed.
+            chempot: Chemical potential to use for the combined result. If not provided, the
+                chemical potential from the individual results will be used, raising an exception
+                if they are inconsistent.
 
         Returns:
             Combined spectral representation.
         """
-        # TODO: just concatenate the eigenvectors...?
-        args = (self, *args)
-        if len(set(arg.nphys for arg in args)) != 1:
-            raise ValueError(
-                "All Spectral objects must have the same number of physical degrees of freedom."
-            )
-        nphys = args[0].nphys
+        return combine_for_greens_function(*spectrals, overlap=overlap, chempot=chempot)
 
-        # Sum the overlap and static self-energy matrices -- double counting is not an issue
-        # with shared static parts because the overlap matrix accounts for the separation
-        static = sum([arg.get_static_self_energy() for arg in args], np.zeros((nphys, nphys)))
-        overlap = sum([arg.get_overlap() for arg in args], np.zeros((nphys, nphys)))
-
-        # Check the chemical potentials
-        if chempot is None:
-            if any(arg.chempot is not None for arg in args):
-                chempots = [arg.chempot for arg in args if arg.chempot is not None]
-                if not all(np.isclose(chempots[0], part) for part in chempots[1:]):
-                    raise ValueError(
-                        "If not chempot is passed to combine, all chemical potentials must be "
-                        "equal in the inputs."
-                    )
-                chempot = chempots[0]
-
-        # Get the auxiliaries
-        energies = np.zeros((0))
-        left = np.zeros((nphys, 0))
-        right = np.zeros((nphys, 0))
-        for arg in args:
-            energies_i, couplings_i = arg.get_auxiliaries()
-            # print(couplings_i.shape)
-            # overlap = arg.get_overlap()
-            # orth = util.matrix_power(overlap, -0.5, hermitian=False)[0]
-            # unorth = util.matrix_power(overlap, 0.5, hermitian=False)[0]
-
-            energies = np.concatenate([energies, energies_i])
-            if arg.hermitian:
-                #couplings_i = orth @ couplings_i
-                left = np.concatenate([left, couplings_i], axis=1)
-            else:
-                left_i, right_i = util.unpack_vectors(couplings_i)
-                #left_i = orth @ left_i
-                #right_i = unorth @ right_i
-                left = np.concatenate([left, left_i], axis=1)
-                right = np.concatenate([right, right_i], axis=1)
-        couplings = np.array([left, right]) if not args[0].hermitian else left
-
-        # Solve the eigenvalue problem
-        self_energy = Lehmann(energies, couplings)
-        result = Spectral(
-            *self_energy.diagonalise_matrix(static, overlap=overlap), nphys, chempot=chempot
-        )
-
-        return result
-    
-    def combine_dyson(self, *args: Spectral, chempot: float | None = None, ns_method: Literal["qr", "svd"] = 'svd') -> Spectral:
-        """Combine multiple spectral representations by concatenating Dyson orbitals. 
+    @classmethod
+    def combine_for_self_energy(
+        cls,
+        *spectrals: Spectral,
+        static: Array | None = None,
+        overlap: Array | None = None,
+        chempot: float | None = None,
+    ) -> Spectral:
+        """Combine multiple spectral representations to conserve the self-energies.
 
         Args:
-            args: Spectral representations to combine.
-            chempot: Chemical potential to be used in the Lehmann representations of the self-energy
-                and Green's function.
+            *spectrals: Spectral representations to combine.
+            static: Static part of the self-energy. If not passed, the static parts from the individual spectral representations will be summed.
+            overlap: Overlap matrix for the physical space. If not passed, the overlap matrices from the individual spectral representations will be summed.
+            chempot: Chemical potential to use for the combined result. If not provided, the
+                chemical potential from the individual results will be used, raising an exception
+                if they are inconsistent.
 
         Returns:
             Combined spectral representation.
         """
-        args = (self, *args)
-        if len(set(arg.nphys for arg in args)) != 1:
-            raise ValueError(
-                "All Spectral objects must have the same number of physical degrees of freedom."
-            )
-        nphys = args[0].nphys
-
-        # Sum the overlap and static self-energy matrices -- double counting is not an issue
-        # with shared static parts because the overlap matrix accounts for the separation
-        static = sum([arg.get_static_self_energy() for arg in args], np.zeros((nphys, nphys)))
-        overlap = sum([arg.get_overlap() for arg in args], np.zeros((nphys, nphys)))
-        # Check the chemical potentials
-        if chempot is None:
-            if any(arg.chempot is not None for arg in args):
-                chempots = [arg.chempot for arg in args if arg.chempot is not None]
-                if not all(np.isclose(chempots[0], part) for part in chempots[1:]):
-                    raise ValueError(
-                        "If not chempot is passed to combine, all chemical potentials must be "
-                        "equal in the inputs."
-                    )
-                chempot = chempots[0]
-
-        # Get the dyson orbitals
-        hermitian = np.all([arg.hermitian for arg in args])
-        energies = []
-        left = []
-        right = []
-        for arg in args:
-            energies_i, orbitals_i = arg.get_dyson_orbitals()
-            energies.append(energies_i)
-            if arg.hermitian:
-                left.append(orbitals_i)
-            else:
-                left_i, right_i = util.unpack_vectors(orbitals_i)
-                left.append(left_i)
-                right.append(right_i)
-
-        energies = np.concatenate(energies, axis=0)
-
-        if hermitian:
-            #print('Hermitian')
-            orbitals = np.concatenate(left, axis=1)
-            # Check orthonormality 
-            #assert np.allclose(orbitals.T.conj()@orbitals - np.eye(orbitals.shape[1]), 0)
-
-            rest = util.null_space_basis(orbitals, hermitian=hermitian, method=ns_method)[0]
-            # Combine vectors:
-            vectors = np.block([orbitals.T, rest]).T
-
-        # assert np.allclose(vectors@vectors.T.conj()-np.eye(vectors.shape[0]), 0)
-        # assert np.allclose(vectors.T.conj()@vectors-np.eye(vectors.shape[1]), 0)
-
-        else: 
-            left = np.concatenate(left, axis=1)
-            right = np.concatenate(right, axis=1)
-
-            #rest_l = util.null_space_basis(left.T.conj(), hermitian=hermitian, method=ns_method)[0]  
-            #rest_r = util.null_space_basis(right, hermitian=hermitian, method=ns_method)[1]
-
-            if ns_method in ['svd', 'qr']:
-                _, rest_r = util.null_space_basis(right, hermitian=hermitian, method=ns_method)
-                _, rest_l = util.null_space_basis(left, hermitian=hermitian, method=ns_method)
-            elif ns_method in ['eig', 'eig-complement']:
-                rest_l, rest_r = util.null_space_basis( left.conj().T @ right, hermitian=hermitian, method=ns_method)
-            
-            #mat = left.T.conj() @ right
-            #rest_l, rest_r = util.null_space_basis(mat, hermitian=hermitian, method=ns_method)
-
-            #rest_l, rest_r = util.biorthonormalise(rest_l, rest_r)
-            print("L R - I : %s"%np.linalg.norm(rest_l.T.conj() @ rest_r - np.eye(rest_l.shape[1])))
-            vectors_l = np.block([left.T, rest_l]).T
-            vectors_r = np.block([right.T, rest_r]).T
-            vectors = np.array([vectors_l, vectors_r])
-
-
-        return Spectral(energies, vectors, nphys, sort=True) 
-    
-
-    def combine_from_poles(self, *args: Spectral, chempot: float | None = None, hermitize=True, tol=1e-12, use_svd=True) -> Spectral:
-        args = (self, *args)
-        if len(set(arg.nphys for arg in args)) != 1:
-            raise ValueError(
-                "All Spectral objects must have the same number of physical degrees of freedom."
-            )
-        nphys = args[0].nphys
-
-        # Sum the overlap and static self-energy matrices -- double counting is not an issue
-        # with shared static parts because the overlap matrix accounts for the separation
-        static = sum([arg.get_static_self_energy() for arg in args], np.zeros((nphys, nphys)))
-        overlap = sum([arg.get_overlap() for arg in args], np.zeros((nphys, nphys)))
-
-        # Check the chemical potentials
-        if chempot is None:
-            if any(arg.chempot is not None for arg in args):
-                chempots = [arg.chempot for arg in args if arg.chempot is not None]
-                if not all(np.isclose(chempots[0], part) for part in chempots[1:]):
-                    raise ValueError(
-                        "If not chempot is passed to combine, all chemical potentials must be "
-                        "equal in the inputs."
-                    )
-                chempot = chempots[0]
-
-        # Get the auxiliaries
-        energies = []
-        residues = []
-        for arg in args:
-            energies.append(arg.eigvals)
-            left, right = util.unpack_vectors(arg.get_dyson_orbitals()[1])
-            res = util.einsum('pa,qa->apq', left, right.conj())
-            if hermitize:
-                res = 0.5 * (res + res.transpose(0,1,2))
-            residues.append(res)
-
-        energies = np.concatenate(energies)
-        residues = np.concatenate(residues)
-
-        return Spectral.from_poles(energies, residues, chempot=chempot, assume_non_degenerate=True, tol=tol, use_svd=use_svd)
-    
-    def hermitize(self, tol: float = 1e-12) -> Spectral:
-        """ Convert a non-hermitian spectral representation to a hermitian one by hermitizing the
-            corresponding Green's function.
-
-            Args:
-                tol: Tolerance for considering eigenvalues as positive.
-            
-            Returns:
-                Hermitian spectral representation.
-
-            Raises:
-                ValueError: If the spectral representation is already Hermitian.
-        """
-        if self.hermitian:
-            raise ValueError("Spectral representation is already Hermitian.")
-
-        gf = self.get_greens_function()
-        gfh = gf.hermitize(tol=tol)
-        nphys = gfh.couplings.shape[0]
-        orthogonalisation_metric = util.linalg.matrix_power(gfh.moment(0), -0.5)[0]
-        couplings = orthogonalisation_metric @ gfh.couplings
-
-        null = util.linalg.null_space_basis(couplings)[1]
-        eigvecs = np.vstack((couplings, null.T))
-        eigvecs[:nphys, :] = np.linalg.inv(orthogonalisation_metric) @ eigvecs[:nphys, :]
-        
-        return Spectral(gfh.energies, eigvecs, nphys, chempot=gfh.chempot)
+        return combine_for_self_energy(*spectrals, static=static, overlap=overlap, chempot=chempot)
 
     @cached_property
     def overlap(self) -> Array:
@@ -606,3 +431,151 @@ class Spectral(BaseRepresentation):
     def __hash__(self) -> int:
         """Hash the object."""
         return hash((tuple(self.eigvals), tuple(self.eigvecs.flatten()), self.nphys, self.chempot))
+
+
+def _get_physical_space_size(spectrals: tuple[Spectral, ...]) -> int:
+    """Get the size of the physical space from multiple spectral representations.
+
+    Args:
+        spectrals: Spectral representations.
+
+    Returns:
+        Size of the physical space.
+
+    Raises:
+        ValueError: If the physical space sizes are inconsistent.
+    """
+    nphys_set = {s.nphys for s in spectrals}
+    if len(nphys_set) != 1:
+        raise ValueError("Inconsistent physical space sizes in spectral representations.")
+    return nphys_set.pop()
+
+
+def _get_chemical_potential(spectrals: tuple[Spectral, ...]) -> float | None:
+    """Get the chemical potential from multiple spectral representations.
+
+    Args:
+        spectrals: Spectral representations.
+
+    Returns:
+        Chemical potential.
+
+    Raises:
+        ValueError: If the chemical potentials are inconsistent.
+    """
+    chempot_set = {s.chempot for s in spectrals if s.chempot is not None}
+    if not all(np.isclose(c1, c2) for c1 in chempot_set for c2 in chempot_set):
+        raise ValueError("Inconsistent chemical potentials in spectral representations.")
+    return chempot_set.pop() if chempot_set else None
+
+
+def combine_for_greens_function(
+    *spectrals: Spectral, overlap: Array | None = None, chempot: float | None = None
+) -> Spectral:
+    """Combine multiple spectral representations to conserve the Green's functions.
+
+    Args:
+        *spectrals: Spectral representations to combine.
+        overlap: Overlap matrix for the physical space. If not passed, the overlap matrices from the
+            individual spectral representations will be summed.
+        chempot: Chemical potential to use for the combined result. If not provided, the chemical
+            potential from the individual results will be used, raising an exception if they are
+            inconsistent.
+
+    Returns:
+        Combined spectral representation.
+
+    Note:
+        This function combines the spectral representations in such a way that the resulting Green's
+        function is equivalent to the combination of the individual Green's functions. This is not
+        guaranteed to conserve the self-energy in the same way.
+    """
+    if len(spectrals) == 1:
+        return spectrals[0]
+    nphys = _get_physical_space_size(spectrals)
+    hermitian = all(spectral.hermitian for spectral in spectrals)
+    if chempot is None:
+        chempot = _get_chemical_potential(spectrals)
+    if overlap is None:
+        overlap = sum((spectral.overlap for spectral in spectrals), np.zeros((nphys, nphys)))
+
+    # Combine the eigenvalues and Dyson orbitals
+    eigvals = np.concatenate([spectral.eigvals for spectral in spectrals], axis=0)
+    left = np.zeros((nphys, 0))
+    right = np.zeros((nphys, 0))
+    for spectral in spectrals:
+        orbitals = spectral.get_dyson_orbitals()[1]
+        l, r = util.unpack_vectors(orbitals)
+        left = np.concatenate((left, l), axis=1)
+        right = np.concatenate((right, r), axis=1)
+
+    # Get the orthogonalisation matrices
+    orth, _ = util.matrix_power(overlap, -0.5, hermitian=hermitian, return_error=False)
+    unorth, _ = util.matrix_power(overlap, 0.5, hermitian=hermitian, return_error=False)
+
+    # Find a basis for the null space
+    projector = right.T @ left.conj()
+    vectors = util.null_space_basis(projector, hermitian=hermitian)
+
+    # Orthogonalise the vectors
+    left = left.T @ orth
+    right = right.T @ orth.T.conj()
+
+    # Biorthonormalise full set of vectors
+    left = np.concatenate([left, vectors[0]], axis=1)
+    right = np.concatenate([right, vectors[1]], axis=1)
+    left, right = util.biorthonormalise(left, right)
+
+    # Unorthogonalise the vectors
+    left[:, :nphys] = left[:, :nphys] @ unorth.T.conj()
+    right[:, :nphys] = right[:, :nphys] @ unorth
+
+    # Get the combined result
+    eigvecs = np.array([left.T.conj(), right.T.conj()]) if not hermitian else left.T.conj()
+    spectral = Spectral(eigvals, eigvecs, nphys, chempot=chempot, sort=True)
+
+    return spectral
+
+
+def combine_for_self_energy(
+    *spectrals: Spectral, static: Array | None = None, overlap: Array | None = None, chempot: float | None = None
+) -> Spectral:
+    """Combine multiple spectral representations to conserve the self-energies.
+
+    Args:
+        *spectrals: Spectral representations to combine.
+        static: Static part of the self-energy. If not passed, the static parts from the individual spectral representations will be summed.
+        overlap: Overlap matrix for the physical space. If not passed, the overlap matrices from the individual spectral representations will be summed.
+        chempot: Chemical potential to use for the combined result. If not provided, the chemical
+            potential from the individual results will be used, raising an exception if they are
+            inconsistent.
+
+    Returns:
+        Combined spectral representation.
+
+    Note:
+        This function combines the spectral representations in such a way that the resulting
+        self-energy is equivalent to the combination of the individual self-energies. This is not
+        guaranteed to conserve the Green's function in the same way.
+    """
+    if len(spectrals) == 1:
+        return spectrals[0]
+    nphys = _get_physical_space_size(spectrals)
+    if chempot is None:
+        chempot = _get_chemical_potential(spectrals)
+    if overlap is None:
+        overlap = sum((spectral.overlap for spectral in spectrals), np.zeros((nphys, nphys)))
+
+    # Combine the self-energies
+    if static is None:
+        static = sum(
+            (spectral.get_static_self_energy() for spectral in spectrals), np.zeros((nphys, nphys))
+        )
+    self_energy = spectrals[0].get_self_energy(chempot=chempot).copy()
+    for spectral in spectrals[1:]:
+        self_energy = self_energy.concatenate(spectral.get_self_energy(chempot=chempot))
+
+    # Create the combined spectral representation
+    spectral = Spectral.from_self_energy(static, self_energy, overlap=overlap, sort=True)
+
+    return spectral

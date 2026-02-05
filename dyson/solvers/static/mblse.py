@@ -398,6 +398,7 @@ class MBLSE(BaseMBL):
 
         return error_sqrt, error_inv_sqrt, error_moments
 
+    # FIXME: being called twice?
     def solve(self, iteration: int | None = None) -> Spectral:
         """Solve the eigenvalue problem at a given iteration.
 
@@ -501,7 +502,7 @@ class MLSE(MBLSE):
         self_energy: Lehmann,
         overlap: Array | None = None,
         **kwargs: Any,
-    ) -> MBLSE:
+    ) -> MLSE:
         """Create a solver from a self-energy.
 
         Args:
@@ -516,7 +517,7 @@ class MLSE(MBLSE):
         raise NotImplementedError("Cannot instantiate MLSE from a self-energy.")
 
     @classmethod
-    def from_expression(cls, expression: BaseExpression, **kwargs: Any) -> MBLSE:
+    def from_expression(cls, expression: BaseExpression, **kwargs: Any) -> MLSE:
         """Create a solver from an expression.
 
         Args:

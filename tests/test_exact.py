@@ -69,8 +69,6 @@ def test_vs_exact_solver_central(
 ) -> None:
     """Test the exact solver for central moments."""
     # Get the quantities required from the expressions
-    if "h" not in expression_method or "p" not in expression_method:
-        pytest.skip("Skipping test for Dyson only expression")
     expression_h = expression_method.h.from_mf(mf)
     expression_p = expression_method.p.from_mf(mf)
     if expression_h.nconfig > 1024 or expression_p.nconfig > 1024:
@@ -81,7 +79,7 @@ def test_vs_exact_solver_central(
     exact_p = exact_cache(mf, expression_method.p)
     assert exact_h.result is not None
     assert exact_p.result is not None
-    result_ph = Spectral.combine(exact_h.result, exact_p.result)
+    result_ph = Spectral.combine_for_greens_function(exact_h.result, exact_p.result)
 
     # Recover the hole self-energy and Green's function
     static = exact_h.result.get_static_self_energy()

@@ -26,8 +26,6 @@ def test_vs_exact_solver(
     exact_cache: ExactGetter,
 ) -> None:
     """Test DensityRelaxation compared to the exact solver."""
-    if "h" not in expression_method or "p" not in expression_method:
-        pytest.skip("Skipping test for Dyson only expression")
     expression_h = expression_method.h.from_mf(mf)
     expression_p = expression_method.p.from_mf(mf)
     if expression_h.nconfig > 1024 or expression_p.nconfig > 1024:
@@ -38,7 +36,7 @@ def test_vs_exact_solver(
     exact_p = exact_cache(mf, expression_method.p)
     assert exact_h.result is not None
     assert exact_p.result is not None
-    result_exact = Spectral.combine(exact_h.result, exact_p.result)
+    result_exact = Spectral.combine_for_greens_function(exact_h.result, exact_p.result)
 
     # Solve the Hamiltonian with DensityRelaxation
     get_fock = get_fock_matrix_function(mf)

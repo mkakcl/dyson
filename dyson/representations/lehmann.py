@@ -591,11 +591,13 @@ class Lehmann(BaseRepresentation):
 
         # Contract the supermatrix
         vector_phys, vector_aux = np.split(vector, [self.nphys])
-        result_phys = util.einsum("pq,q...->p...", physical, vector_phys)
-        result_phys += util.einsum("pk,k...->p...", right, vector_aux)
-        result_aux = util.einsum("pk,p...->k...", left.conj(), vector_phys)
-        result_aux += util.einsum("k,k...->k...", energies, vector_aux)
-        result = np.concatenate((result_phys, result_aux), axis=0)
+        result_phys_phys = util.einsum("pq,q...->p...", physical, vector_phys)
+        result_phys_aux = util.einsum("pk,k...->p...", right, vector_aux)
+        result_aux_phys = util.einsum("pk,p...->k...", left.conj(), vector_phys)
+        result_aux_aux = util.einsum("k,k...->k...", energies, vector_aux)
+        result = np.concatenate(
+            (result_phys_phys + result_phys_aux, result_aux_phys + result_aux_aux), axis=0
+        )
 
         return result
 

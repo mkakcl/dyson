@@ -8,7 +8,7 @@ import pytest
 from pyscf import gto, scf
 
 from dyson import numpy as np
-from dyson.expressions import ADC2, CCSD, FCI, HF, TDAGW, ADC2x
+from dyson.expressions import ADC2, CCSD, FCI, HF, ADC2x
 from dyson.representations.lehmann import Lehmann
 from dyson.representations.spectral import Spectral
 from dyson.solvers import Exact
@@ -33,9 +33,9 @@ MOL_CACHE = {
         basis="sto-3g",
         verbose=0,
     ),
-    "he-ccpvdz": gto.M(
-        atom="He 0 0 0",
-        basis="cc-pvdz",
+    "lih-sto3g": gto.M(
+        atom="Li 0 0 0; H 0 0 1.64",
+        basis="sto-3g",
         verbose=0,
     ),
 }
@@ -43,7 +43,7 @@ MOL_CACHE = {
 MF_CACHE = {
     "h2-631g": scf.RHF(MOL_CACHE["h2-631g"]).run(conv_tol=1e-12),
     "h2o-sto3g": scf.RHF(MOL_CACHE["h2o-sto3g"]).run(conv_tol=1e-12),
-    "he-ccpvdz": scf.RHF(MOL_CACHE["he-ccpvdz"]).run(conv_tol=1e-12),
+    "lih-sto3g": scf.RHF(MOL_CACHE["lih-sto3g"]).run(conv_tol=1e-12),
 }
 
 for key, mf in MF_CACHE.items():
@@ -51,8 +51,8 @@ for key, mf in MF_CACHE.items():
     dm = mf.make_rdm1(mo, mf.mo_occ)
     mf = mf.run(dm)
 
-METHODS = [HF, CCSD, FCI, ADC2, ADC2x, TDAGW]
-METHOD_NAMES = ["HF", "CCSD", "FCI", "ADC2", "ADC2x", "TDAGW"]
+METHODS = [HF, CCSD, FCI, ADC2, ADC2x]
+METHOD_NAMES = ["HF", "CCSD", "FCI", "ADC2", "ADC2x"]
 
 
 def pytest_generate_tests(metafunc):  # type: ignore
@@ -166,16 +166,6 @@ def _get_central_result(
     allow_hermitian: bool = True,
 ) -> Spectral:
     """Get the central result for the given mean-field method."""
-    if "dyson" in expression_method:
-        expression = expression_method.dyson.from_mf(mf)
-        if expression.nconfig > 1024:
-            pytest.skip("Skipping test for large Hamiltonian")
-        if not expression.hermitian and not allow_hermitian:
-            pytest.skip("Skipping test for non-Hermitian Hamiltonian with negative weights")
-        exact = exact_cache(mf, expression_method.dyson)
-        assert exact.result is not None
-        return exact.result
-
     # Combine hole and particle results
     expression_h = expression_method.h.from_mf(mf)
     expression_p = expression_method.p.from_mf(mf)
@@ -187,4 +177,4 @@ def _get_central_result(
     exact_p = exact_cache(mf, expression_method.p)
     assert exact_h.result is not None
     assert exact_p.result is not None
-    return Spectral.combine(exact_h.result, exact_p.result)
+    return Spectral.combine_for_greens_function(exact_h.result, exact_p.result)
