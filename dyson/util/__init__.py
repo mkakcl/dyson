@@ -28,6 +28,7 @@ from dyson.util.linalg import (
     as_trace,
     unit_vector,
     null_space_basis,
+    project_eigenvectors,
     concatenate_paired_vectors,
     unpack_vectors,
     block_diag,

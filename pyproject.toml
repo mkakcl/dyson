@@ -19,10 +19,10 @@ classifiers = [
 	"Topic :: Scientific/Engineering",
 	"Topic :: Software Development",
 	"Programming Language :: Python",
-	"Programming Language :: Python :: 3.7",
-	"Programming Language :: Python :: 3.8",
-	"Programming Language :: Python :: 3.9",
-	"Programming Language :: Python :: 3.10",
+	"Programming Language :: Python :: 3.11",
+	"Programming Language :: Python :: 3.12",
+	"Programming Language :: Python :: 3.13",
+	"Programming Language :: Python :: 3.14",
 	"Operating System :: MacOS :: MacOS X",
 	"Operating System :: POSIX :: Linux",
 ]
@@ -37,9 +37,8 @@ dependencies = [
 dev = [
     "ruff>=0.10.0",
     "mypy>=1.5.0",
-    "coverage[toml]>=5.5.0",
+    "typing-extensions>=4.0.0",
     "pytest>=6.2.4",
-    "pytest-cov>=4.0.0",
     "matplotlib>=3.4.0",
     "sphinx>=7.0",
     "sphinx-book-theme>=1.0",
@@ -114,25 +113,6 @@ ignore_missing_imports = true
 module = "pyscf.*"
 ignore_missing_imports = true
 
-[tool.coverage.run]
-branch = true
-source = [
-    "dyson",
-]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "def __str__",
-    "raise NotImplementedError",
-    "raise util.ModelNotImplemented",
-    "if __name__ == .__main__.:",
-]
-
-[tool.coverage.html]
-directory = "cov_html"
-
 [tool.pytest.ini_options]
 filterwarnings = [
     "ignore::DeprecationWarning",
@@ -141,4 +121,4 @@ testpaths = [
     "dyson",
     "tests",
 ]
-addopts = "--doctest-modules --cov=dyson"
+addopts = "--doctest-modules"

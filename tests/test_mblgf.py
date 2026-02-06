@@ -27,8 +27,6 @@ def test_central_moments(
 ) -> None:
     """Test the recovery of the exact central moments from the MBLGF solver."""
     # Get the quantities required from the expression
-    if "h" not in expression_method or "p" not in expression_method:
-        pytest.skip("Skipping test for Dyson only expression")
     expression_h = expression_method.h.from_mf(mf)
     expression_p = expression_method.p.from_mf(mf)
     nmom_gf = max_cycle * 2 + 2
@@ -68,14 +66,13 @@ def test_vs_exact_solver_central(
 ) -> None:
     """Test the MBLGF solver for central moments."""
     # Get the quantities required from the expressions
-    if "h" not in expression_method or "p" not in expression_method:
-        pytest.skip("Skipping test for Dyson only expression")
     expression_h = expression_method.h.from_mf(mf)
     expression_p = expression_method.p.from_mf(mf)
     if expression_h.nconfig > 1024 or expression_p.nconfig > 1024:
         pytest.skip("Skipping test for large Hamiltonian")
     if request.node.name in (
-        "test_vs_exact_solver_central[lih-631g-CCSD-3]",
+        "test_vs_exact_solver_central[lih-sto3g-CCSD-2]",
+        "test_vs_exact_solver_central[lih-sto3g-CCSD-3]",
         "test_vs_exact_solver_central[h2o-sto3g-CCSD-2]",
         "test_vs_exact_solver_central[h2o-sto3g-CCSD-3]",
     ):
@@ -87,7 +84,7 @@ def test_vs_exact_solver_central(
     exact_p = exact_cache(mf, expression_method.p)
     assert exact_h.result is not None
     assert exact_p.result is not None
-    result_exact_ph = Spectral.combine(exact_h.result, exact_p.result)
+    result_exact_ph = Spectral.combine_for_greens_function(exact_h.result, exact_p.result)
 
     # Get the self-energy and Green's function from the exact solver
     static_exact = result_exact_ph.get_static_self_energy()
@@ -103,7 +100,7 @@ def test_vs_exact_solver_central(
     mblgf_p.kernel()
     assert mblgf_h.result is not None
     assert mblgf_p.result is not None
-    result_ph = Spectral.combine(mblgf_h.result, mblgf_p.result)
+    result_ph = Spectral.combine_for_greens_function(mblgf_h.result, mblgf_p.result)
 
     assert helper.have_equal_moments(
         mblgf_h.result.get_self_energy(), exact_h.result.get_self_energy(), nmom_gf - 2

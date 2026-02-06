@@ -7,6 +7,7 @@ from pyscf import gto, scf
 from dyson.expressions import ADC2
 from dyson.grids import GridRF
 from dyson.plotting import format_axes_spectral_function, plot_dynamic
+from dyson.representations import Spectral
 from dyson.solvers import CPGF, MBLGF, MBLSE, CorrectionVector, Downfolded, Exact
 
 # Get a molecule and mean-field from PySCF
@@ -24,7 +25,7 @@ exact_h = Exact.from_expression(exp_h)
 exact_h.kernel()
 exact_p = Exact.from_expression(exp_p)
 exact_p.kernel()
-result = exact_h.result.combine(exact_p.result)
+result = Spectral.combine_for_greens_function(exact_h.result, exact_p.result)
 static = result.get_static_self_energy()
 self_energy = result.get_self_energy()
 

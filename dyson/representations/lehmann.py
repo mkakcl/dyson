@@ -239,19 +239,41 @@ class Lehmann(BaseRepresentation):
         """
         return self.mask(self.energies >= self.chempot, deep=deep)
 
-    def copy(self, chempot: float | None = None, deep: bool = True) -> Lehmann:
+    def copy(
+        self,
+        energies: Array | None = None,
+        couplings: Array | None = None,
+        chempot: float | None = None,
+        deep: bool = True,
+    ) -> Lehmann:
         """Return a copy of the Lehmann representation.
 
         Args:
-            chempot: The chemical potential to use for the copy. If ``None``, the original
-                chemical potential is used.
+            energies: The energies to use for the new ``Lehmann``.
+                If ``None``, the original energies are used.
+            couplings: The couplings to use for the new ``Lehmann``.
+                If ``None``, the original couplings are used.
+            chempot: The chemical potential to use for the new ``Lehmann``.
+                If ``None``, the original chemical potential is used.
             deep: Whether to return a deep copy of the energies and couplings.
 
         Returns:
             A new Lehmann representation.
         """
-        energies = self.energies
-        couplings = self.couplings
+        if energies is None:
+            energies = self.energies
+        elif energies.shape != self.energies.shape:
+            raise ValueError(
+                f"energies must have shape {self.energies.shape}, but got {energies.shape}."
+            )
+
+        if couplings is None:
+            couplings = self.couplings
+        elif couplings.shape != self.couplings.shape:
+            raise ValueError(
+                f"couplings must have shape {self.couplings.shape}, but got {couplings.shape}."
+            )
+
         if chempot is None:
             chempot = self.chempot
 
@@ -260,7 +282,7 @@ class Lehmann(BaseRepresentation):
             energies = energies.copy()
             couplings = couplings.copy()
 
-        return self.__class__(energies, couplings, chempot=self.chempot, sort=False)
+        return self.__class__(energies, couplings, chempot=chempot, sort=False)
 
     def rotate_couplings(self, rotation: Array | tuple[Array, Array]) -> Lehmann:
         r"""Rotate the couplings and return a new Lehmann representation.
@@ -457,7 +479,7 @@ class Lehmann(BaseRepresentation):
         if chempot:
             if chempot is True:
                 chempot = self.chempot
-            energies -= chempot
+            energies = energies - chempot
 
         # If there are no auxiliary states, return the physical matrix
         if self.naux == 0:
@@ -492,7 +514,7 @@ class Lehmann(BaseRepresentation):
         if chempot:
             if chempot is True:
                 chempot = self.chempot
-            energies -= chempot
+            energies = energies - chempot
 
         # Build the supermatrix diagonal
         diagonal = np.concatenate((np.diag(physical), energies))
@@ -537,7 +559,7 @@ class Lehmann(BaseRepresentation):
         if chempot:
             if chempot is True:
                 chempot = self.chempot
-            energies -= chempot
+            energies = energies - chempot
         if vector.shape[0] != (self.nphys + self.naux):
             raise ValueError(
                 f"Vector shape {vector.shape} does not match supermatrix shape "
@@ -546,11 +568,13 @@ class Lehmann(BaseRepresentation):
 
         # Contract the supermatrix
         vector_phys, vector_aux = np.split(vector, [self.nphys])
-        result_phys = util.einsum("pq,q...->p...", physical, vector_phys)
-        result_phys += util.einsum("pk,k...->p...", right, vector_aux)
-        result_aux = util.einsum("pk,p...->k...", left.conj(), vector_phys)
-        result_aux += util.einsum("k,k...->k...", energies, vector_aux)
-        result = np.concatenate((result_phys, result_aux), axis=0)
+        result_phys_phys = util.einsum("pq,q...->p...", physical, vector_phys)
+        result_phys_aux = util.einsum("pk,k...->p...", right, vector_aux)
+        result_aux_phys = util.einsum("pk,p...->k...", left.conj(), vector_phys)
+        result_aux_aux = util.einsum("k,k...->k...", energies, vector_aux)
+        result = np.concatenate(
+            (result_phys_phys + result_phys_aux, result_aux_phys + result_aux_aux), axis=0
+        )
 
         return result
 
