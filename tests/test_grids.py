@@ -54,7 +54,7 @@ def get_dynamic_pair(
     exact_p = exact_cache(mf, expression_method.p)
     assert exact_h.result is not None
     assert exact_p.result is not None
-    result = Spectral.combine(exact_h.result, exact_p.result)
+    result = Spectral.combine_for_greens_function(exact_h.result, exact_p.result)
     gf1 = grid1.evaluate_lehmann(
         result.get_greens_function(),
         ordering=ordering,
@@ -73,7 +73,7 @@ def get_dynamic_pair(
 
 @pytest.mark.parametrize("ordering", [Ordering.RETARDED, Ordering.ADVANCED])
 @pytest.mark.parametrize("reduction", [Reduction.NONE, Reduction.DIAG])
-@pytest.mark.parametrize("component", [Component.FULL, Component.REAL, Component.IMAG])
+@pytest.mark.parametrize("component", [Component.FULL])
 @pytest.mark.parametrize("grid_rf", [GridRF.from_uniform(-8, 8, 256, eta=0.1)])
 @pytest.mark.parametrize("grid_if", [GridIF.from_uniform(128, beta=32)])
 def test_transform_rf_if(
@@ -104,19 +104,43 @@ def test_transform_rf_if(
     gf_if_recov = transform(gf_rf, grid_if)
     gf_rf_recov = transform(gf_if, grid_rf)
 
-    print(np.max(np.abs(gf_rf_recov - gf_rf)))
-    print(np.mean(np.abs(gf_rf_recov - gf_rf)))
-    print(np.max(np.abs(gf_if_recov - gf_if)))
-    print(np.mean(np.abs(gf_if_recov - gf_if)))
-    print()
+    # Check that the recovered Green's functions match the original ones
+    assert np.mean(np.abs(gf_rf_recov - gf_rf)) < 1e-1  # approximate
+    assert np.allclose(gf_if_recov, gf_if)  # exact
 
-    if not np.allclose(gf_rf_recov, gf_rf, atol=1.0, rtol=1e-3):
-        i = np.argmax(np.abs(gf_rf_recov - gf_rf))
-        i = np.unravel_index(i, gf_rf_recov.array.shape)
-        print(gf_rf.array[i])
-        print(gf_rf_recov.array[i])
-        print(gf_rf_recov.array[i] - gf_rf.array[i])
+
+@pytest.mark.parametrize("ordering", [Ordering.RETARDED, Ordering.ADVANCED, Ordering.ORDERED])
+@pytest.mark.parametrize("reduction", [Reduction.NONE, Reduction.DIAG])
+@pytest.mark.parametrize("component", [Component.FULL])
+@pytest.mark.parametrize("grid_rf, grid_rt", [with_dual(GridRF.from_uniform(-8, 8, 256, eta=0.1))])
+def test_transform_rf_rt(
+    helper: Helper,
+    mf: scf.hf.RHF,
+    expression_method: ExpressionCollection,
+    exact_cache: ExactGetter,
+    ordering: Ordering,
+    reduction: Reduction,
+    component: Component,
+    grid_rf: BaseGrid,
+    grid_rt: BaseGrid,
+) -> None:
+    """Test Fourier transform between real time and frequency."""
+    gf_rf, gf_rt = get_dynamic_pair(
+        helper,
+        mf,
+        expression_method,
+        exact_cache,
+        ordering,
+        reduction,
+        component,
+        grid_rf,
+        grid_rt,
+    )
+
+    # Transform the Green's functions
+    gf_rt_recov = transform(gf_rf, grid_rt)
+    gf_rf_recov = transform(gf_rt, grid_rf)
 
     # Check that the recovered Green's functions match the original ones
-    assert np.allclose(gf_rf_recov, gf_rf, atol=1.0, rtol=1e-3)  # not exact
-    assert np.allclose(gf_if_recov, gf_if)  # exact
+    assert np.mean(np.abs(gf_rf_recov - gf_rf)) < 1e-3
+    assert np.mean(np.abs(gf_rt_recov - gf_rt)) < 1e-3

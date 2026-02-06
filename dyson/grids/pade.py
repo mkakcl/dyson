@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from dyson import util
 from dyson import numpy as np
-from dyson.representations.enums import Ordering
+from dyson.representations.enums import Ordering, Component, Reduction
 
 if TYPE_CHECKING:
     from dyson.representations.dynamic import Dynamic
@@ -39,6 +39,8 @@ def _pade_coefficients(greens_function: Dynamic[BaseFrequencyGrid]) -> Array:
             factor = coefficients[i] / coefficients[i + 1 :] - 1.0
         factor[~np.isfinite(factor)] = 0.0
         difference = resolvent[i + 1 :] - resolvent[i]
+        if (np.iscomplexobj(factor) or np.iscomplexobj(difference)) and not np.iscomplexobj(coefficients):
+            coefficients = coefficients.astype(np.complex128)
         coefficients[i + 1 :] = util.einsum("w...,w->w...", factor, 1.0 / difference)
 
     return coefficients
@@ -74,7 +76,9 @@ def evaluate_pade(
     # Recursively evaluate the Pade approximation
     for i in range(len(grid_old) - 1, -1, -1):
         term = 1.0 + util.einsum("w,w...->w...", resolvent_new - resolvent_old[i], array)
-        array = coefficients[i] / term
+        with np.errstate(divide="ignore", invalid="ignore"):
+            array = coefficients[i] / term
+        array[~np.isfinite(array)] = 0.0
 
     return array
 
@@ -93,7 +97,11 @@ def analytic_continuation_freq_pade(
         Green's function in the conjugate frequency domain.
     """
     if greens_function.ordering == Ordering.ORDERED:
-        raise ValueError("Pade approximation not defined for time-ordered Green's functions.")
+        raise ValueError("time-ordered ordering is not supported.")
+    if greens_function.component != Component.FULL:
+        raise ValueError("only full component is supported.")
+    if greens_function.reduction == Reduction.TRACE:
+        raise ValueError("traced reduction is not supported.")
     coefficients = _pade_coefficients(greens_function)
     array = evaluate_pade(
         coefficients,

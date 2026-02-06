@@ -8,7 +8,7 @@ import warnings
 from dyson import util
 from dyson import numpy as np
 from dyson.grids.util import are_dual
-from dyson.representations.enums import Component
+from dyson.representations.enums import Component, Reduction
 
 if TYPE_CHECKING:
     from dyson.representations.dynamic import Dynamic
@@ -35,6 +35,8 @@ def fourier_transform_imag(greens_function: Dynamic[BaseGrid], grid: BaseGrid) -
         raise ValueError("only imaginary frequency and imaginary time grids is supported.")
     if greens_function.component != Component.FULL:
         raise ValueError("only full component is supported.")
+    if greens_function.reduction == Reduction.TRACE:
+        raise ValueError("traced reduction is not supported.")
     forward = grid_in.domain == "time"
 
     # Setup based on direction
@@ -92,6 +94,8 @@ def fourier_transform_real(greens_function: Dynamic[BaseGrid], grid: BaseGrid) -
         raise ValueError("only real frequency and real time grids are supported.")
     if greens_function.component != Component.FULL:
         raise ValueError("only full component is supported.")
+    if greens_function.reduction == Reduction.TRACE:
+        raise ValueError("traced reduction is not supported.")
     forward = grid_in.domain == "time"
 
     # Setup based on direction
