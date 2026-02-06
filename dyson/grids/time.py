@@ -215,7 +215,8 @@ class ImaginaryTimeGrid(BaseTimeGrid):
         """
         grid = np.expand_dims(self.points, axis=tuple(range(1, energies.ndim + 1)))
         energies = np.expand_dims(energies - chempot, axis=0)
-        fermi = 1.0 / (1.0 + np.exp(self.beta * energies))
+        energies = util.upper_bound_for_exp(energies, factor=self.beta)
+        fermi = 1.0 / util.lower_bound_for_inv(1.0 + np.exp(self.beta * energies))
         propagator = np.exp(-energies * grid) * fermi
         return propagator.astype(np.complex128)
 

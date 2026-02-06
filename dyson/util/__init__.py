@@ -13,7 +13,7 @@ Submodules
 
 """
 
-from dyson.util.misc import catch_warnings, cache_by_id, get_mean_field
+from dyson.util.misc import catch_warnings, cache_by_id, get_mean_field, upper_bound_for_exp, lower_bound_for_inv
 from dyson.util.linalg import (
     einsum,
     orthonormalise,
