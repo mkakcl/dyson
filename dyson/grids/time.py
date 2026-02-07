@@ -121,14 +121,17 @@ class RealTimeGrid(BaseTimeGrid):
         Returns:
             Propagator on the grid.
         """
+        ordering = Ordering(ordering)
         grid = np.expand_dims(self.points, axis=tuple(range(1, energies.ndim + 1)))
         energies = np.expand_dims(energies, axis=0)
         if ordering == Ordering.RETARDED:
-            phase = np.exp(-grid * self.eta)
-        elif ordering == Ordering.ADVANCED:
             phase = np.exp(grid * self.eta)
-        else:
+        elif ordering == Ordering.ADVANCED:
+            phase = np.exp(-grid * self.eta)
+        elif ordering == Ordering.ORDERED:
             phase = np.exp(-np.abs(grid) * self.eta)
+        else:
+            ordering.raise_invalid_representation()
         theta = self._heaviside(grid, energies - chempot, ordering)
         propagator = 1.0j * phase * np.exp(1.0j * grid * energies) * theta
         return propagator

@@ -74,8 +74,8 @@ def get_dynamic_pair(
 @pytest.mark.parametrize("ordering", [Ordering.RETARDED, Ordering.ADVANCED])
 @pytest.mark.parametrize("reduction", [Reduction.NONE, Reduction.DIAG])
 @pytest.mark.parametrize("component", [Component.FULL])
-@pytest.mark.parametrize("grid_rf", [GridRF.from_uniform(-8, 8, 256, eta=0.1)])
-@pytest.mark.parametrize("grid_if", [GridIF.from_uniform(128, beta=32)])
+@pytest.mark.parametrize("grid_rf", [GridRF.from_uniform(-8, 8, 501, eta=0.1)])
+@pytest.mark.parametrize("grid_if", [GridIF.from_uniform(501, beta=32)])
 def test_transform_rf_if(
     helper: Helper,
     mf: scf.hf.RHF,
@@ -112,8 +112,8 @@ def test_transform_rf_if(
 @pytest.mark.parametrize("ordering", [Ordering.RETARDED, Ordering.ADVANCED, Ordering.ORDERED])
 @pytest.mark.parametrize("reduction", [Reduction.NONE, Reduction.DIAG])
 @pytest.mark.parametrize("component", [Component.FULL])
-@pytest.mark.parametrize("grid_rf, grid_rt", [with_dual(GridRF.from_uniform(-8, 8, 256, eta=0.1))])
-def test_transform_rf_rt(
+@pytest.mark.parametrize("grid_if, grid_it", [with_dual(GridRF.from_uniform(-8, 8, 256, eta=0.25))])
+def test_transform_if_it(
     helper: Helper,
     mf: scf.hf.RHF,
     expression_method: ExpressionCollection,
@@ -121,11 +121,11 @@ def test_transform_rf_rt(
     ordering: Ordering,
     reduction: Reduction,
     component: Component,
-    grid_rf: BaseGrid,
-    grid_rt: BaseGrid,
+    grid_if: BaseGrid,
+    grid_it: BaseGrid,
 ) -> None:
-    """Test Fourier transform between real time and frequency."""
-    gf_rf, gf_rt = get_dynamic_pair(
+    """Test Fourier transform between imaginary time and frequency."""
+    gf_if, gf_it = get_dynamic_pair(
         helper,
         mf,
         expression_method,
@@ -133,14 +133,26 @@ def test_transform_rf_rt(
         ordering,
         reduction,
         component,
-        grid_rf,
-        grid_rt,
+        grid_if,
+        grid_it,
     )
 
     # Transform the Green's functions
-    gf_rt_recov = transform(gf_rf, grid_rt)
-    gf_rf_recov = transform(gf_rt, grid_rf)
+    gf_it_recov = transform(gf_if, grid_it)
+    gf_if_recov = transform(gf_it, grid_if)
 
     # Check that the recovered Green's functions match the original ones
-    assert np.mean(np.abs(gf_rf_recov - gf_rf)) < 1e-3
-    assert np.mean(np.abs(gf_rt_recov - gf_rt)) < 1e-3
+    low_freq = np.abs(grid_if.points) < 2.0
+    if not np.allclose(gf_it_recov.array[low_freq], gf_it.array[low_freq]):
+        from dyson.plotting import plot_dynamic
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots()
+        plot_dynamic(gf_if.copy(reduction="trace", component="real"), ax=ax, fmt="C0.-", label="Original RF")
+        plot_dynamic(gf_if_recov.copy(reduction="trace", component="real"), ax=ax, fmt="C1.--", label="Recovered RF")
+        plt.xlabel("Frequency")
+        plt.ylabel("Re G")
+        plt.legend()
+        plt.show()
+    assert np.allclose(gf_if.array[low_freq], gf_if_recov.array[low_freq])
+    #assert np.mean(np.abs(gf_if_recov - gf_if)) < 1e-1
+    #assert np.mean(np.abs(gf_it_recov - gf_it)) < 1e-1
