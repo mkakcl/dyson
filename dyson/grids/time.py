@@ -218,9 +218,8 @@ class ImaginaryTimeGrid(BaseTimeGrid):
         """
         grid = np.expand_dims(self.points, axis=tuple(range(1, energies.ndim + 1)))
         energies = np.expand_dims(energies - chempot, axis=0)
-        energies = util.upper_bound_for_exp(energies, factor=self.beta)
-        fermi = 1.0 / util.lower_bound_for_inv(1.0 + np.exp(self.beta * energies))
-        propagator = np.exp(-energies * grid) * fermi
+        fermi = util.reciprocal(1.0 + util.exp(-self.beta * energies))  # overflow protected
+        propagator = -util.exp(-energies * grid) * fermi  # overflow protected
         return propagator.astype(np.complex128)
 
     @property
@@ -239,7 +238,7 @@ class ImaginaryTimeGrid(BaseTimeGrid):
         Returns:
             Inverse temperature of the grid.
         """
-        return -(self.points[0] + self.points[-1])
+        return (self.points[-1] - self.points[0])
 
     @classmethod
     def from_uniform(cls, num: int, beta: float) -> Self:
@@ -252,8 +251,8 @@ class ImaginaryTimeGrid(BaseTimeGrid):
         Returns:
             Uniform real time grid.
         """
-        spacing = beta / num
-        points = np.linspace(-beta + spacing * 0.5, -spacing * 0.5, num, endpoint=True)
+        shift = 0.5 * beta / num
+        points = np.linspace(shift, beta + shift, num, endpoint=True)
         return cls(points)
 
     @classmethod

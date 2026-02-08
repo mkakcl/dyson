@@ -42,20 +42,19 @@ def fourier_transform_imag(greens_function: Dynamic[BaseGrid], grid: BaseGrid) -
     # Setup based on direction
     beta = grid_in.beta
     if forward:
-        freqs, times = grid_out.points, grid_in.points
         sign = 1
         norm = beta
         fft = np.fft.ifft
     else:
-        freqs, times = grid_in.points, grid_out.points
         sign = -1
-        norm = 1 / beta
+        norm = 2 / beta
         fft = np.fft.fft
 
     # Get the shifts
-    shift_if = np.exp(1.0j * sign * np.pi * times / beta)
-    shift_it = np.exp(1.0j * sign * (freqs - np.pi / beta) * times[0])
-    shifts = (shift_if, shift_it) if forward else (shift_it, shift_if)
+    shifts = (
+        np.exp(1.0j * sign * np.min(grid_out.points) * grid_in.points),
+        np.exp(1.0j * sign * np.min(grid_in.points) * (grid_out.points - np.min(grid_out.points))),
+    )
 
     # Get the input array
     array = greens_function.array.copy()
@@ -67,6 +66,13 @@ def fourier_transform_imag(greens_function: Dynamic[BaseGrid], grid: BaseGrid) -
 
     # Normalise
     array *= norm
+
+    # Hermitise for imaginary frequency to imaginary time transform
+    if not forward:
+        if greens_function.reduction == Reduction.NONE:
+            array = 0.5 * (array + array.swapaxes(1, 2).conj())
+        else:
+            array = 0.5 * (array + array.conj())
 
     return greens_function.__class__(
         grid_out,

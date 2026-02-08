@@ -13,7 +13,7 @@ Submodules
 
 """
 
-from dyson.util.misc import catch_warnings, cache_by_id, get_mean_field, upper_bound_for_exp, lower_bound_for_inv
+from dyson.util.misc import catch_warnings, cache_by_id, get_mean_field
 from dyson.util.linalg import (
     einsum,
     orthonormalise,
@@ -34,6 +34,10 @@ from dyson.util.linalg import (
     block_diag,
     set_subspace,
     rotate_subspace,
+    upper_bound_for_exp,
+    lower_bound_for_reciprocal,
+    exp,
+    reciprocal,
 )
 from dyson.util.moments import (
     se_moments_to_gf_moments,
