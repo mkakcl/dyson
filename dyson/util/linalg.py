@@ -675,4 +675,7 @@ def lower_bound_for_reciprocal(x: Array, factor: float = 1.0) -> Array:
 
 def reciprocal(x: Array) -> Array:
     """Return the reciprocal of an array with overflow protection."""
+    if np.any(np.isnan(lower_bound_for_reciprocal(x))):
+        print(np.min(x), np.min(lower_bound_for_reciprocal(x)))
+        1/0
     return 1.0 / lower_bound_for_reciprocal(x)

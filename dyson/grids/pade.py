@@ -31,19 +31,13 @@ def _pade_coefficients(greens_function: Dynamic[BaseFrequencyGrid]) -> Array:
 
     # Initialise the coefficients
     resolvent = grid.resolvent(np.array(0.0), 0.0, invert=False, ordering=greens_function.ordering)
-    coefficients = greens_function.array.copy()
+    coefficients = greens_function.array.astype(np.result_type(greens_function.array, resolvent))
 
     # Recursively compute the coefficients
     for i in range(len(grid) - 1):
-        with np.errstate(divide="ignore", invalid="ignore"):
-            factor = coefficients[i] / coefficients[i + 1 :] - 1.0
-        factor[~np.isfinite(factor)] = 0.0
+        factor = coefficients[i] * util.reciprocal(coefficients[i + 1 :]) - 1.0
         difference = resolvent[i + 1 :] - resolvent[i]
-        if (np.iscomplexobj(factor) or np.iscomplexobj(difference)) and not np.iscomplexobj(
-            coefficients
-        ):
-            coefficients = coefficients.astype(np.complex128)
-        coefficients[i + 1 :] = util.einsum("w...,w->w...", factor, 1.0 / difference)
+        coefficients[i + 1 :] = util.einsum("w...,w->w...", factor, util.reciprocal(difference))
 
     return coefficients
 

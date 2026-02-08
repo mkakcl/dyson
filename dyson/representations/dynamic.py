@@ -330,6 +330,47 @@ class Dynamic(BaseRepresentation, Generic[_TGrid]):
             hermitian=self.hermitian,
         )
 
+    def inverse(self) -> Dynamic[_TGrid]:
+        """Return the inverse of the dynamic representation."""
+        if self.reduction != Reduction.NONE:
+            raise ValueError("Cannot invert a dynamic representation with reduction.")
+        return self.__class__(
+            self.grid,
+            np.linalg.inv(self.array),
+            component=self.component,
+            reduction=Reduction.NONE,
+            ordering=self.ordering,
+            hermitian=self.hermitian,
+        )
+
+    def conjugate(self) -> Dynamic[_TGrid]:
+        """Return the complex conjugate of the dynamic representation."""
+        return self.__class__(
+            self.grid,
+            np.conjugate(self.array),
+            component=self.component,
+            reduction=self.reduction,
+            ordering=self.ordering,
+            hermitian=self.hermitian,
+        )
+
+    def transpose(self) -> Dynamic[_TGrid]:
+        """Return the transpose of the dynamic representation."""
+        if self.reduction == Reduction.NONE:
+            array = np.transpose(self.array, axes=(0, 2, 1))
+        elif self.reduction == Reduction.DIAG or self.reduction == Reduction.TRACE:
+            array = self.array
+        else:
+            self.reduction.raise_invalid_representation()
+        return self.__class__(
+            self.grid,
+            array,
+            component=self.component,
+            reduction=self.reduction,
+            ordering=self.ordering,
+            hermitian=self.hermitian,
+        )
+
     def __add__(self, other: Dynamic[_TGrid]) -> Dynamic[_TGrid]:
         """Add two dynamic representations."""
         if not isinstance(other, Dynamic):
