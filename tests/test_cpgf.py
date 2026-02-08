@@ -9,8 +9,8 @@ import pytest
 
 from dyson.expressions.hf import BaseHF
 from dyson.grids import RealFrequencyGrid
-from dyson.solvers import CPGF
 from dyson.representations.enums import Ordering
+from dyson.solvers import CPGF
 
 if TYPE_CHECKING:
     from pyscf import scf
