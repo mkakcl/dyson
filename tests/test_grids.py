@@ -7,15 +7,15 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
-from dyson.grids import GridRF, GridRT, GridIF, GridIT, transform
+from dyson.grids import GridIF, GridIT, GridRF, GridRT, transform
 from dyson.grids.grid import BaseGrid
+from dyson.representations.enums import Component, Ordering, Reduction
 from dyson.representations.spectral import Spectral
-from dyson.representations.enums import Ordering, Reduction, Component
 
 if TYPE_CHECKING:
     from pyscf import scf
 
-    from dyson.expressions.expression import BaseExpression, ExpressionCollection
+    from dyson.expressions.expression import ExpressionCollection
     from dyson.representations.dynamic import Dynamic
 
     from .conftest import ExactGetter, Helper
@@ -147,6 +147,6 @@ def test_transform_if_it(
         pytest.skip("Skipping test for h2o-sto3g due to precision issues with high frequency tail")
     edges = len(grid_it) // 16
     mask = np.ones(len(grid_it), dtype=bool)
-    mask[: edges] = mask[-edges :] = False
+    mask[:edges] = mask[-edges:] = False
     assert np.allclose(gf_if_recov.array, gf_if.array, atol=0.05)
     assert np.allclose(gf_it_recov.array[mask], gf_it.array[mask], atol=0.05)

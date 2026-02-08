@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
+
 from typing_extensions import Self
 
 from dyson import numpy as np
 from dyson import util
-from dyson.representations.enums import Component, Reduction, RepresentationEnum, Ordering
+from dyson.representations.enums import Component, Ordering, Reduction, RepresentationEnum
 
 if TYPE_CHECKING:
-    from typing import Any, Iterable
+    from typing import Any
 
     from dyson.representations.dynamic import Dynamic
     from dyson.representations.lehmann import Lehmann

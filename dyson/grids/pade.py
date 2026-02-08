@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from dyson import util
 from dyson import numpy as np
-from dyson.representations.enums import Ordering, Component, Reduction
+from dyson import util
+from dyson.representations.enums import Component, Ordering, Reduction
 
 if TYPE_CHECKING:
+    from dyson.grids.frequency import BaseFrequencyGrid
     from dyson.representations.dynamic import Dynamic
-    from dyson.grids.frequency import GridIF, GridRF, BaseFrequencyGrid
     from dyson.typing import Array
 
 
@@ -39,7 +39,9 @@ def _pade_coefficients(greens_function: Dynamic[BaseFrequencyGrid]) -> Array:
             factor = coefficients[i] / coefficients[i + 1 :] - 1.0
         factor[~np.isfinite(factor)] = 0.0
         difference = resolvent[i + 1 :] - resolvent[i]
-        if (np.iscomplexobj(factor) or np.iscomplexobj(difference)) and not np.iscomplexobj(coefficients):
+        if (np.iscomplexobj(factor) or np.iscomplexobj(difference)) and not np.iscomplexobj(
+            coefficients
+        ):
             coefficients = coefficients.astype(np.complex128)
         coefficients[i + 1 :] = util.einsum("w...,w->w...", factor, 1.0 / difference)
 
@@ -90,8 +92,8 @@ def analytic_continuation_freq_pade(
     """Perform analytic continuation in the frequency domain using the Pade approximation.
 
     Args:
-        greens_function_if: Green's function in a frequency domain.
-        grid_rf: Real frequency grid to continue to.
+        greens_function: Green's function in a frequency domain.
+        grid: Frequency grid to continue to.
 
     Returns:
         Green's function in the conjugate frequency domain.

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Generic, TypeVar
 from dyson import numpy as np
 from dyson import util
 from dyson.grids.grid import BaseGrid
-from dyson.representations.enums import Component, Reduction, Ordering
+from dyson.representations.enums import Component, Ordering, Reduction
 from dyson.representations.representation import BaseRepresentation
 
 if TYPE_CHECKING:

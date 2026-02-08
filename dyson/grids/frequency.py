@@ -4,21 +4,18 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from typing import TYPE_CHECKING
-from typing_extensions import Self
 
 import scipy.special
+from typing_extensions import Self
 
 from dyson import numpy as np
-from dyson import util
 from dyson.grids.grid import BaseGrid
-from dyson.representations.enums import Component, Ordering, Reduction
+from dyson.representations.enums import Ordering
 
 if TYPE_CHECKING:
-    from typing import Any, Iterable
+    from typing import Any
 
-    from dyson.grids.time import RealTimeGrid, ImaginaryTimeGrid
-    from dyson.representations.dynamic import Dynamic
-    from dyson.representations.lehmann import Lehmann
+    from dyson.grids.time import ImaginaryTimeGrid, RealTimeGrid
     from dyson.typing import Array
 
 

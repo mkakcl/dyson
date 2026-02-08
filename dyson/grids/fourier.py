@@ -3,19 +3,15 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-import warnings
 
-from dyson import util
 from dyson import numpy as np
+from dyson import util
 from dyson.grids.util import are_dual
 from dyson.representations.enums import Component, Reduction
 
 if TYPE_CHECKING:
-    from dyson.representations.dynamic import Dynamic
     from dyson.grids.grid import BaseGrid
-    from dyson.grids.frequency import GridIF
-    from dyson.grids.time import GridIT
-    from dyson.typing import Array
+    from dyson.representations.dynamic import Dynamic
 
 
 def fourier_transform_imag(greens_function: Dynamic[BaseGrid], grid: BaseGrid) -> Dynamic[BaseGrid]:

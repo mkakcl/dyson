@@ -10,13 +10,10 @@ from typing import TYPE_CHECKING
 
 from pyscf import gto, scf
 
-from dyson import numpy as np
-
 if TYPE_CHECKING:
     from typing import Any, Callable, Iterator
     from warnings import WarningMessage
 
-    from dyson.typing import Array
 
 
 @contextmanager

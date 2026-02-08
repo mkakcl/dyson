@@ -52,7 +52,6 @@ class Reduction(RepresentationEnum):
             self.raise_invalid_representation()
 
 
-
 class Component(RepresentationEnum):
     """Enumeration for the component of the dynamic representation.
 

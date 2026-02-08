@@ -4,21 +4,19 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from typing import TYPE_CHECKING
-from math import factorial
+
 from typing_extensions import Self
 
 from dyson import numpy as np
 from dyson import util
 from dyson.grids.grid import BaseGrid
-from dyson.representations.enums import Component, Ordering, Reduction
+from dyson.representations.enums import Ordering
 
 if TYPE_CHECKING:
-    from typing import Any, Iterable
+    from typing import Any
 
-    from dyson.representations.dynamic import Dynamic
-    from dyson.representations.lehmann import Lehmann
+    from dyson.grids.frequency import ImaginaryFrequencyGrid, RealFrequencyGrid
     from dyson.typing import Array
-    from dyson.grids.frequency import RealFrequencyGrid, ImaginaryFrequencyGrid
 
 
 class BaseTimeGrid(BaseGrid):
@@ -238,7 +236,7 @@ class ImaginaryTimeGrid(BaseTimeGrid):
         Returns:
             Inverse temperature of the grid.
         """
-        return (self.points[-1] - self.points[0])
+        return self.points[-1] - self.points[0]
 
     @classmethod
     def from_uniform(cls, num: int, beta: float) -> Self:
