@@ -151,7 +151,7 @@ class BaseGrid(ABC):
 
     @classmethod
     @abstractmethod
-    def from_dual(cls, other: BaseGrid) -> Self:
+    def from_dual(cls, other: Any) -> Self:
         """Create a grid from another grid in the dual domain.
 
         Args:
@@ -246,3 +246,37 @@ class BaseGrid(ABC):
     def reality(self) -> bool:
         """Get the reality of the grid."""
         pass
+
+
+class BaseRealGrid(BaseGrid):
+    """Base class for real grids."""
+
+    eta: float = 1e-2
+
+    _options = {"eta"}
+
+    @property
+    def reality(self) -> bool:
+        """Get the reality of the grid.
+
+        Returns:
+            Reality of the grid.
+        """
+        return True
+
+
+class BaseImaginaryGrid(BaseGrid):
+    """Base class for imaginary grids."""
+
+    beta: float = 256
+
+    _options = {"beta"}
+
+    @property
+    def reality(self) -> bool:
+        """Get the reality of the grid.
+
+        Returns:
+            Reality of the grid.
+        """
+        return False

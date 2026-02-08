@@ -81,7 +81,7 @@ theme = {
 plt.rcParams.update(theme)
 
 
-def _unit_name(unit: str) -> str:
+def _unit_name(unit: Literal["Ha", "eV"]) -> str:
     """Return the name of the unit for SciPy."""
     if unit == "Ha":
         return "hartree"
@@ -100,11 +100,11 @@ def _convert(
     """Convert energies between Hartree and eV."""
     if unit_from == unit_to:
         return energy
-    unit_from = _unit_name(unit_from)
-    unit_to = _unit_name(unit_to)
     if domain == "time":
         unit_from, unit_to = unit_to, unit_from
-    convert = scipy.constants.physical_constants[f"{unit_from}-{unit_to} relationship"][0]
+    convert = scipy.constants.physical_constants[
+        f"{_unit_name(unit_from)}-{_unit_name(unit_to)} relationship"
+    ][0]
     return energy * convert
 
 

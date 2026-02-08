@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     from warnings import WarningMessage
 
 
-
 @contextmanager
 def catch_warnings(warning_type: type[Warning] = Warning) -> Iterator[list[WarningMessage]]:
     """Context manager to catch warnings.

@@ -35,7 +35,5 @@ def are_dual(grid1: BaseGrid, grid2: BaseGrid) -> bool:
     freq_recov = freq.from_dual(time)
     same_points = len(time) == len(time_recov) and np.allclose(time.points, time_recov.points)
     same_points &= len(freq) == len(freq_recov) and np.allclose(freq.points, freq_recov.points)
-    if time.reality and freq.reality:
-        same_eta = np.isclose(time.eta, freq.eta)
-        return same_points and same_eta
-    return same_points
+    same_eta = np.isclose(getattr(time, "eta", 0.0), getattr(freq, "eta", 0.0))
+    return bool(same_points and same_eta)

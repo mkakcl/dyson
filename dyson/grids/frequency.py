@@ -9,7 +9,7 @@ import scipy.special
 from typing_extensions import Self
 
 from dyson import numpy as np
-from dyson.grids.grid import BaseGrid
+from dyson.grids.grid import BaseGrid, BaseImaginaryGrid, BaseRealGrid
 from dyson.representations.enums import Ordering
 
 if TYPE_CHECKING:
@@ -33,13 +33,19 @@ class BaseFrequencyGrid(BaseGrid):
 
     @abstractmethod
     def resolvent(  # noqa: D417
-        self, energies: Array, chempot: float | Array, **kwargs: Any
+        self,
+        energies: Array,
+        chempot: float | Array,
+        ordering: Ordering = Ordering.ORDERED,
+        invert: bool = True,
     ) -> Array:
         """Get the resolvent of a Lehmann representation on the grid.
 
         Args:
             energies: Energies of the poles.
             chempot: Chemical potential.
+            ordering: Time ordering of the resolvent.
+            invert: Whether to apply the inversion in the resolvent formula.
 
         Returns:
             Resolvent on the grid.
@@ -69,12 +75,8 @@ class BaseFrequencyGrid(BaseGrid):
         return self.resolvent(energies, chempot, ordering=ordering)
 
 
-class RealFrequencyGrid(BaseFrequencyGrid):
+class RealFrequencyGrid(BaseFrequencyGrid, BaseRealGrid):
     """Real frequency grid."""
-
-    eta: float = 1e-2
-
-    _options = {"eta"}
 
     def __init__(  # noqa: D417
         self, points: Array, weights: Array | None = None, **kwargs: Any
@@ -89,15 +91,6 @@ class RealFrequencyGrid(BaseFrequencyGrid):
         self._points = np.asarray(points)
         self._weights = np.asarray(weights) if weights is not None else None
         self.set_options(**kwargs)
-
-    @property
-    def reality(self) -> bool:
-        """Get the reality of the grid.
-
-        Returns:
-            Reality of the grid.
-        """
-        return True
 
     @staticmethod
     def _resolvent_signs(energies: Array, ordering: Ordering) -> Array:
@@ -176,6 +169,8 @@ class RealFrequencyGrid(BaseFrequencyGrid):
             raise NotImplementedError("only uniformly spaced grids are supported.")
         if not other.uniformly_weighted:
             raise NotImplementedError("only uniformly weighted grids are supported.")
+        if other.domain != "time" or not other.reality:
+            raise ValueError(f"dual grid for {cls.__name__} must be of type RealTimeGrid")
         spacing = 2.0 * np.pi / (other.separation * len(other))
         num = len(other)
         points = np.linspace(-spacing * (num - 1) / 2, spacing * (num + 1) / 2, num, endpoint=False)
@@ -185,12 +180,8 @@ class RealFrequencyGrid(BaseFrequencyGrid):
 GridRF = RealFrequencyGrid
 
 
-class ImaginaryFrequencyGrid(BaseFrequencyGrid):
+class ImaginaryFrequencyGrid(BaseFrequencyGrid, BaseImaginaryGrid):
     """Imaginary frequency grid."""
-
-    beta: float = 256
-
-    _options = {"beta"}
 
     def __init__(  # noqa: D417
         self, points: Array, weights: Array | None = None, **kwargs: Any
@@ -205,15 +196,6 @@ class ImaginaryFrequencyGrid(BaseFrequencyGrid):
         self._points = np.asarray(points)
         self._weights = np.asarray(weights) if weights is not None else None
         self.set_options(**kwargs)
-
-    @property
-    def reality(self) -> bool:
-        """Get the reality of the grid.
-
-        Returns:
-            Reality of the grid.
-        """
-        return False
 
     def resolvent(  # noqa: D417
         self,
@@ -293,6 +275,8 @@ class ImaginaryFrequencyGrid(BaseFrequencyGrid):
             raise NotImplementedError("only uniformly spaced grids are supported.")
         if not other.uniformly_weighted:
             raise NotImplementedError("only uniformly weighted grids are supported.")
+        if other.domain != "time" or other.reality:
+            raise ValueError(f"dual grid for {cls.__name__} must be of type ImaginaryTimeGrid")
         return cls.from_uniform(len(other) // 2, other.beta)  # Use τ:ω ratio of 2:1
 
 

@@ -10,11 +10,13 @@ from dyson.grids.util import are_dual
 from dyson.representations.enums import Component, Reduction
 
 if TYPE_CHECKING:
-    from dyson.grids.grid import BaseGrid
+    from dyson.grids.grid import BaseImaginaryGrid
     from dyson.representations.dynamic import Dynamic
 
 
-def fourier_transform_imag(greens_function: Dynamic[BaseGrid], grid: BaseGrid) -> Dynamic[BaseGrid]:
+def fourier_transform_imag(
+    greens_function: Dynamic[BaseImaginaryGrid], grid: BaseImaginaryGrid
+) -> Dynamic[BaseImaginaryGrid]:
     """Fourier transform between imaginary frequency and imaginary time grids.
 
     Args:

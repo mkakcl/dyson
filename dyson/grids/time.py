@@ -9,7 +9,7 @@ from typing_extensions import Self
 
 from dyson import numpy as np
 from dyson import util
-from dyson.grids.grid import BaseGrid
+from dyson.grids.grid import BaseGrid, BaseImaginaryGrid, BaseRealGrid
 from dyson.representations.enums import Ordering
 
 if TYPE_CHECKING:
@@ -29,13 +29,17 @@ class BaseTimeGrid(BaseGrid):
 
     @abstractmethod
     def propagator(  # noqa: D417
-        self, energies: Array, chempot: float | Array, **kwargs: Any
+        self,
+        energies: Array,
+        chempot: float | Array,
+        ordering: Ordering = Ordering.ORDERED,
     ) -> Array:
         """Get the propagator of a Lehmann representation on the grid.
 
         Args:
             energies: Energies of the poles.
             chempot: Chemical potential.
+            ordering: Time ordering of the resolvent.
 
         Returns:
             Propagator of the grid.
@@ -65,12 +69,8 @@ class BaseTimeGrid(BaseGrid):
         return self.propagator(energies, chempot, ordering=ordering)
 
 
-class RealTimeGrid(BaseTimeGrid):
+class RealTimeGrid(BaseTimeGrid, BaseRealGrid):
     """Real time grid."""
-
-    eta: float = 1e-2
-
-    _options = {"eta"}
 
     def __init__(  # noqa: D417
         self, points: Array, weights: Array | None = None, **kwargs: Any
@@ -134,15 +134,6 @@ class RealTimeGrid(BaseTimeGrid):
         propagator = 1.0j * phase * np.exp(1.0j * grid * energies) * theta
         return propagator
 
-    @property
-    def reality(self) -> bool:
-        """Get the reality of the grid.
-
-        Returns:
-            Reality of the grid.
-        """
-        return True
-
     @classmethod
     def from_uniform(cls, start: float, stop: float, num: int, eta: float | None = None) -> Self:
         """Create a uniform real time grid.
@@ -173,6 +164,8 @@ class RealTimeGrid(BaseTimeGrid):
             raise NotImplementedError("only uniformly spaced grids are supported.")
         if not other.uniformly_weighted:
             raise NotImplementedError("only uniformly weighted grids are supported.")
+        if other.domain != "frequency" or not other.reality:
+            raise ValueError(f"dual grid for {cls.__name__} must be of type RealFrequencyGrid")
         spacing = 2.0 * np.pi / (other.separation * len(other))
         num = len(other)
         points = np.linspace(-spacing * num / 2, spacing * num / 2, num, endpoint=False)
@@ -182,7 +175,7 @@ class RealTimeGrid(BaseTimeGrid):
 GridRT = RealTimeGrid
 
 
-class ImaginaryTimeGrid(BaseTimeGrid):
+class ImaginaryTimeGrid(BaseTimeGrid, BaseImaginaryGrid):
     """Imaginary time grid."""
 
     def __init__(  # noqa: D417
@@ -220,24 +213,6 @@ class ImaginaryTimeGrid(BaseTimeGrid):
         propagator = -util.exp(-energies * grid) * fermi  # overflow protected
         return propagator.astype(np.complex128)
 
-    @property
-    def reality(self) -> bool:
-        """Get the reality of the grid.
-
-        Returns:
-            Reality of the grid.
-        """
-        return False
-
-    @property
-    def beta(self) -> float:
-        """Get the inverse temperature of the grid.
-
-        Returns:
-            Inverse temperature of the grid.
-        """
-        return self.points[-1] - self.points[0]
-
     @classmethod
     def from_uniform(cls, num: int, beta: float) -> Self:
         """Create a uniform real time grid.
@@ -251,7 +226,7 @@ class ImaginaryTimeGrid(BaseTimeGrid):
         """
         shift = 0.5 * beta / num
         points = np.linspace(shift, beta + shift, num, endpoint=True)
-        return cls(points)
+        return cls(points, beta=beta)
 
     @classmethod
     def from_dual(cls, other: ImaginaryFrequencyGrid) -> Self:
@@ -267,6 +242,8 @@ class ImaginaryTimeGrid(BaseTimeGrid):
             raise NotImplementedError("only uniformly spaced grids are supported.")
         if not other.uniformly_weighted:
             raise NotImplementedError("only uniformly weighted grids are supported.")
+        if other.domain != "frequency" or other.reality:
+            raise ValueError(f"dual grid for {cls.__name__} must be of type ImaginaryFrequencyGrid")
         return cls.from_uniform(len(other) * 2, other.beta)  # Use τ:ω ratio of 2:1
 
 
