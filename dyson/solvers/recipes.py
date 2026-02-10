@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
 
 from dyson import numpy as np
 from dyson import util
-from dyson.solvers.static.exact import Exact
 from dyson.expressions.hamiltonian import Hamiltonian
+from dyson.solvers.static.exact import Exact
 
 if TYPE_CHECKING:
-    from dyson.typing import Array
     from dyson.representations.lehmann import Lehmann
+    from dyson.typing import Array
 
 
 def greens_function_from_hamiltonian(
@@ -44,4 +44,5 @@ def greens_function_from_hamiltonian(
     exp = Hamiltonian(hamiltonian, bra=bra, ket=ket if not hermitian else None)
     solver = Exact.from_expression(exp)
     solver.kernel()
+    assert solver.result is not None
     return solver.result.get_greens_function()

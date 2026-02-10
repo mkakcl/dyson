@@ -37,8 +37,8 @@ overlap = result.get_overlap()
 
 # Solve the Hamiltonian using the Direct solver, initialisation via either:
 
-# 1) Create the solver from a self-energy. 
-#    
+# 1) Create the solver from a self-energy.
+#
 #    Note that the default time-ordering (ordered) will display a warning as it is numerically
 #    unstable, but the default is kept consistent with other functionality in the package).
 solver = Direct.from_self_energy(

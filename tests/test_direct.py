@@ -7,22 +7,15 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
-from dyson import util
-from dyson.grids import RealFrequencyGrid, ImaginaryFrequencyGrid
-from dyson.solvers import Direct, Exact
-from dyson.representations.dynamic import Dynamic
+from dyson.grids import ImaginaryFrequencyGrid, RealFrequencyGrid
 from dyson.representations.enums import Ordering
 from dyson.representations.spectral import Spectral
-from dyson.expressions.hamiltonian import Hamiltonian
+from dyson.solvers import Direct, Exact
 from dyson.solvers.recipes import greens_function_from_hamiltonian
 
 if TYPE_CHECKING:
-    from typing import Any
-
     from pyscf import scf
 
-    from dyson.typing import Array
-    from dyson.expressions.expression import BaseExpression
     from dyson.grids.grid import BaseGrid
 
     from .conftest import ExactGetter, ExpressionCollection, Helper
@@ -66,6 +59,7 @@ def test_vs_exact_solver(
     # Solve the self-energy exactly to get the exact Green's function
     exact = Exact.from_self_energy(static, self_energy, overlap=overlap)
     exact.kernel()
+    assert exact.result is not None
     se_exact = grid.evaluate_lehmann(exact.result.get_self_energy(), ordering=ordering)
     gf_exact = grid.evaluate_lehmann(exact.result.get_greens_function(), ordering=ordering)
 

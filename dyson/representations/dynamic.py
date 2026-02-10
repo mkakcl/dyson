@@ -365,7 +365,7 @@ class Dynamic(BaseRepresentation, Generic[_TGrid]):
         """Return the transpose of the dynamic representation."""
         if self.reduction == Reduction.NONE:
             array = np.transpose(self.array, axes=(0, 2, 1))
-        elif self.reduction == Reduction.DIAG or self.reduction == Reduction.TRACE:
+        elif self.reduction in {Reduction.DIAG, Reduction.TRACE}:
             array = self.array
         else:
             self.reduction.raise_invalid_representation()

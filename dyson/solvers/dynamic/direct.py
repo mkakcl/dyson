@@ -3,21 +3,22 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+
 from typing_extensions import Self
 
-from dyson import console, printing, util
+from dyson import console, printing
 from dyson import numpy as np
+from dyson.grids.util import are_equal
 from dyson.representations.dynamic import Dynamic
 from dyson.representations.enums import Component, Ordering, Reduction
-from dyson.solvers.solver import DynamicSolver
 from dyson.solvers.recipes import greens_function_from_hamiltonian
-from dyson.grids.util import are_equal
+from dyson.solvers.solver import DynamicSolver
 
 if TYPE_CHECKING:
     from typing import Any
 
-    from dyson.grids.frequency import BaseFrequencyGrid
     from dyson.expressions.expression import BaseExpression
+    from dyson.grids.frequency import BaseFrequencyGrid
     from dyson.representations.lehmann import Lehmann
     from dyson.typing import Array
 
@@ -101,7 +102,8 @@ class Direct(DynamicSolver):
             component=kwargs.pop("component", Component.FULL),
         )
         greens_function_init = grid.evaluate_lehmann(
-            greens_function_from_hamiltonian(static, overlap=overlap), **representation,
+            greens_function_from_hamiltonian(static, overlap=overlap),
+            **representation,
         )
         self_energy_grid = grid.evaluate_lehmann(self_energy, **representation)
         return cls(
