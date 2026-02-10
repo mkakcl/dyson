@@ -10,6 +10,7 @@ from dyson import numpy as np
 from dyson.representations.dynamic import Dynamic
 from dyson.representations.enums import Component, Ordering, Reduction
 from dyson.solvers.solver import DynamicSolver
+from dyson.solvers.recipes import greens_function_from_hamiltonian
 from dyson.grids.util import are_equal
 
 if TYPE_CHECKING:
@@ -91,24 +92,21 @@ class Direct(DynamicSolver):
         Returns:
             Solver instance.
         """
-        grid = self_energy.grid
-        greens_function_init = Dynamic(
-            grid,
-            grid.resolvent(
-                static, chempot=self_energy.chempot, ordering=self_energy.ordering
-            ),
-            reduction=Reduction.NONE,
-            component=self_energy.component,
-            ordering=self_energy.ordering,
-            hermitian=np.allclose(static, static.conj().T),
-        ).copy(
-            ordering=self_energy.ordering,
-            reduction=self_energy.reduction,
-            component=self_energy.component,
+        if "grid" not in kwargs:
+            raise ValueError("Missing required argument grid.")
+        grid: BaseFrequencyGrid = kwargs.pop("grid")
+        representation = dict(
+            ordering=kwargs.pop("ordering", Ordering.ORDERED),
+            reduction=kwargs.pop("reduction", Reduction.NONE),
+            component=kwargs.pop("component", Component.FULL),
         )
+        greens_function_init = grid.evaluate_lehmann(
+            greens_function_from_hamiltonian(static, overlap=overlap), **representation,
+        )
+        self_energy_grid = grid.evaluate_lehmann(self_energy, **representation)
         return cls(
             greens_function_init=greens_function_init,
-            self_energy=self_energy,
+            self_energy=self_energy_grid,
             overlap=overlap,
             **kwargs,
         )
