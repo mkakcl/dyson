@@ -213,7 +213,7 @@ class ADC2_1h(BaseADC_1h):
 
     METHOD = "adc(2)"
 
-    def build_se_moments(self, nmom: int, reduction: Reduction = Reduction.NONE) -> Array:
+    def build_se_moments(self, nmom: int, reduction: Reduction = Reduction.NONE, ooov: [Array | None] = None) -> Array:
         """Build the self-energy moments.
 
         Args:
@@ -230,8 +230,9 @@ class ADC2_1h(BaseADC_1h):
         cv = self._adc_obj.mo_coeff[:, self.nocc :]
 
         # Rotate the two-electron integrals
-        ooov = ao2mo.kernel(self._adc_obj.mol, (co, co, co, cv), compact=False)
-        ooov = ooov.reshape(eo.size, eo.size, eo.size, ev.size)
+        if ooov is None:
+            ooov = ao2mo.kernel(self._adc_obj.mol, (co, co, co, cv), compact=False)
+            ooov = ooov.reshape(eo.size, eo.size, eo.size, ev.size)
         left = ooov * 2 - ooov.swapaxes(1, 2)
 
         # Get the subscript based on the reduction
@@ -281,7 +282,7 @@ class ADC2_1p(BaseADC_1p):
 
     METHOD = "adc(2)"
 
-    def build_se_moments(self, nmom: int, reduction: Reduction = Reduction.NONE) -> Array:
+    def build_se_moments(self, nmom: int, reduction: Reduction = Reduction.NONE, vvvo: [Array | None] = None) -> Array:
         """Build the self-energy moments.
 
         Args:
@@ -298,8 +299,9 @@ class ADC2_1p(BaseADC_1p):
         cv = self._adc_obj.mo_coeff[:, self.nocc :]
 
         # Rotate the two-electron integrals
-        vvvo = ao2mo.kernel(self._adc_obj.mol, (cv, cv, cv, co), compact=False)
-        vvvo = vvvo.reshape(ev.size, ev.size, ev.size, eo.size)
+        if vvvo is None:
+            vvvo = ao2mo.kernel(self._adc_obj.mol, (cv, cv, cv, co), compact=False)
+            vvvo = vvvo.reshape(ev.size, ev.size, ev.size, eo.size)
         left = vvvo * 2 - vvvo.swapaxes(1, 2)
 
         # Get the subscript based on the reduction
