@@ -133,11 +133,20 @@ class RealFrequencyGrid(BaseFrequencyGrid, BaseRealGrid):
         Returns:
             Resolvent on the grid.
         """
-        signs = self._resolvent_signs(energies - chempot, ordering)
-        grid = np.expand_dims(self.points, axis=tuple(range(1, energies.ndim + 1)))
+        ndim = energies.ndim
+        if ndim > 2:
+            raise ValueError("energies array must be at most 2D")
+        if ndim < 2:
+            signs = self._resolvent_signs(energies - chempot, ordering)
+        else:
+            signs = self._resolvent_signs(np.diag(energies) - chempot, ordering)
+            signs = np.diag(signs)
+        grid = np.expand_dims(self.points, axis=tuple(range(1, ndim + 1)))
         energies = np.expand_dims(energies, axis=0)
         denominator = grid + (signs * 1.0j * self.eta - energies)
-        return 1.0 / denominator if invert else denominator
+        if invert:
+            return 1.0 / denominator if ndim < 2 else np.linalg.inv(denominator)
+        return denominator
 
     @classmethod
     def from_uniform(cls, start: float, stop: float, num: int, eta: float | None = None) -> Self:
@@ -222,10 +231,15 @@ class ImaginaryFrequencyGrid(BaseFrequencyGrid, BaseImaginaryGrid):
         Returns:
             Resolvent on the grid.
         """
-        grid = np.expand_dims(self.points, axis=tuple(range(1, energies.ndim + 1)))
+        ndim = energies.ndim
+        if ndim > 2:
+            raise ValueError("energies array must be at most 2D")
+        grid = np.expand_dims(self.points, axis=tuple(range(1, ndim + 1)))
         energies = np.expand_dims(energies, axis=0)
         denominator = 1.0j * grid - energies
-        return 1.0 / denominator if invert else denominator
+        if invert:
+            return 1.0 / denominator if ndim < 2 else np.linalg.inv(denominator)
+        return denominator
 
     @classmethod
     def from_uniform(cls, num: int, beta: float | None = None) -> Self:

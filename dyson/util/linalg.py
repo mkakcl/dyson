@@ -670,12 +670,10 @@ def lower_bound_for_reciprocal(x: Array, factor: float = 1.0) -> Array:
     """
     dtype_min = np.finfo(x.dtype).tiny
     threshold = dtype_min / factor
-    return np.where(np.abs(x) < threshold, np.sign(x) * threshold, x)
+    signs = np.where(x >= 0, 1, -1)
+    return np.where(np.abs(x) < threshold, signs * threshold, x)
 
 
 def reciprocal(x: Array) -> Array:
     """Return the reciprocal of an array with overflow protection."""
-    if np.any(np.isnan(lower_bound_for_reciprocal(x))):
-        print(np.min(x), np.min(lower_bound_for_reciprocal(x)))
-        1/0
     return 1.0 / lower_bound_for_reciprocal(x)

@@ -37,3 +37,21 @@ def are_dual(grid1: BaseGrid, grid2: BaseGrid) -> bool:
     same_points &= len(freq) == len(freq_recov) and np.allclose(freq.points, freq_recov.points)
     same_eta = np.isclose(getattr(time, "eta", 0.0), getattr(freq, "eta", 0.0))
     return bool(same_points and same_eta)
+
+
+def are_equal(grid1: BaseGrid, grid2: BaseGrid) -> bool:
+    """Check if a pair of grids are equal.
+
+    Args:
+        grid1: The first grid.
+        grid2: The second grid.
+
+    Returns:
+        Whether the grids are equal.
+    """
+    same_domain = grid1.domain == grid2.domain
+    same_reality = grid1.reality == grid2.reality
+    same_points = len(grid1) == len(grid2) and np.allclose(grid1.points, grid2.points)
+    same_weights = np.allclose(grid1.weights, grid2.weights)
+    same_eta = np.isclose(getattr(grid1, "eta", 0.0), getattr(grid2, "eta", 0.0))
+    return bool(same_domain and same_reality and same_points and same_weights and same_eta)

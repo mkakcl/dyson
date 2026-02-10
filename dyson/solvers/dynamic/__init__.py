@@ -8,5 +8,6 @@ Submodules
 
     corrvec
     cpgf
+    direct
 
 """

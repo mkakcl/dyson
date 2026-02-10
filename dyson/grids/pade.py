@@ -34,8 +34,11 @@ def _pade_coefficients(greens_function: Dynamic[BaseFrequencyGrid]) -> Array:
     coefficients = greens_function.array.astype(np.result_type(greens_function.array, resolvent))
 
     # Recursively compute the coefficients
+    # FIXME
     for i in range(len(grid) - 1):
-        factor = coefficients[i] * util.reciprocal(coefficients[i + 1 :]) - 1.0
+        with np.errstate(over="ignore"):
+            factor = coefficients[i] * util.reciprocal(coefficients[i + 1 :]) - 1.0
+        factor[~np.isfinite(factor)] = 0.0
         difference = resolvent[i + 1 :] - resolvent[i]
         coefficients[i + 1 :] = util.einsum("w...,w->w...", factor, util.reciprocal(difference))
 

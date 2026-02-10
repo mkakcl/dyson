@@ -56,6 +56,7 @@ def _cast_arrays(first: Dynamic[_TGrid], second: Dynamic[_TGrid]) -> tuple[Array
 def _same_grid(first: Dynamic[_TGrid], second: Dynamic[_TGrid]) -> bool:
     """Check if two dynamic representations have the same grid."""
     # TODO: Move to BaseGrid
+    # TODO: Cache by ID? This can be O(ngrid)
     if not isinstance(second.grid, type(first.grid)):
         return False
     if len(first.grid) != len(second.grid):
@@ -332,13 +333,19 @@ class Dynamic(BaseRepresentation, Generic[_TGrid]):
 
     def inverse(self) -> Dynamic[_TGrid]:
         """Return the inverse of the dynamic representation."""
-        if self.reduction != Reduction.NONE:
-            raise ValueError("Cannot invert a dynamic representation with reduction.")
+        if self.reduction == Reduction.NONE:
+            array = np.linalg.inv(self.array)
+        elif self.reduction == Reduction.DIAG:
+            array = 1.0 / self.array
+        elif self.reduction == Reduction.TRACE:
+            raise ValueError("Cannot invert a dynamic representation with trace reduction.")
+        else:
+            self.reduction.raise_invalid_representation()
         return self.__class__(
             self.grid,
-            np.linalg.inv(self.array),
+            array,
             component=self.component,
-            reduction=Reduction.NONE,
+            reduction=self.reduction,
             ordering=self.ordering,
             hermitian=self.hermitian,
         )
