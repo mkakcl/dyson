@@ -23,7 +23,7 @@ einsum = functools.partial(np.einsum, optimize=True)
 On some platforms, mixing :mod:`numpy` and :mod:`scipy` eigenvalue solvers can lead to performance
 issues, likely from repeating warm-up overhead from conflicting BLAS and/or LAPACK libraries.
 """
-AVOID_SCIPY_EIG: bool = False
+AVOID_SCIPY_EIG: bool = True
 
 """Default biorthonormalisation method."""
 BIORTH_METHOD: Literal["lu", "eig", "eig-balanced"] = "eig-balanced"
