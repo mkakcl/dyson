@@ -794,7 +794,7 @@ class Lehmann(BaseRepresentation):
 
     # Methods associated with a static approximation to a self-energy:
 
-    def as_static_potential(self, mo_energy: Array, eta: float = 1e-2) -> Array:
+    def as_static_potential(self, mo_energy: Array, eta: float = 1e-2, real_part: bool = True) -> Array:
         r"""Convert the Lehmann representation to a static potential.
 
         The static potential is defined as
@@ -806,6 +806,7 @@ class Lehmann(BaseRepresentation):
         Args:
             mo_energy: The molecular orbital energies.
             eta: The broadening parameter.
+            real_part: Whether to take the real part of the static potential. If ``False``, the full complex static potential is returned.
 
         Returns:
             The static potential.
@@ -819,8 +820,11 @@ class Lehmann(BaseRepresentation):
         denom = mo_energy[:, None] - energies[None]
 
         # Calculate the static potential
-        static = util.einsum("pk,qk,pk->pq", right, left.conj(), 1.0 / denom).real
-        static = 0.5 * (static + static.T)
+        static = util.einsum("pk,qk,pk->pq", right, left.conj(), 1.0 / denom)
+        static = 0.5 * (static + static.T.conj())
+
+        if real_part:
+            static = static.real
 
         return static
 
