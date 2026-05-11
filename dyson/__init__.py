@@ -71,6 +71,8 @@ For dynamic solvers, all solvers require the grid parameters, along with:
        self-energy.
    * - :class:`~dyson.solvers.dynamic.cpgf.CPGF`
      - Chebyshev polynomial moments of the dynamic Green's function.
+   * - :class:`~dyson.solvers.dynamic.direct.Direct`
+     - Dynamic self-energy and initial Green's function, in frequency space.
 
 For a full accounting of the inputs and their types, please see the documentation for each solver.
 
@@ -135,5 +137,6 @@ from dyson.solvers import (
     DensityRelaxation,
     CorrectionVector,
     CPGF,
+    Direct,
 )
 from dyson.expressions import HF, CCSD, FCI, ADC2, ADC2x, Hamiltonian

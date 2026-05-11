@@ -6,88 +6,21 @@ from abc import abstractmethod
 from typing import TYPE_CHECKING
 
 import scipy.special
+from typing_extensions import Self
 
 from dyson import numpy as np
-from dyson import util
-from dyson.grids.grid import BaseGrid
-from dyson.representations.enums import Component, Ordering, Reduction
+from dyson.grids.grid import BaseGrid, BaseImaginaryGrid, BaseRealGrid
+from dyson.representations.enums import Ordering
 
 if TYPE_CHECKING:
     from typing import Any
 
-    from dyson.representations.dynamic import Dynamic
-    from dyson.representations.lehmann import Lehmann
+    from dyson.grids.time import ImaginaryTimeGrid, RealTimeGrid
     from dyson.typing import Array
 
 
 class BaseFrequencyGrid(BaseGrid):
     """Base class for frequency grids."""
-
-    def evaluate_lehmann(
-        self,
-        lehmann: Lehmann,
-        reduction: Reduction = Reduction.NONE,
-        component: Component = Component.FULL,
-        **kwargs: Any,
-    ) -> Dynamic[BaseFrequencyGrid]:
-        r"""Evaluate a Lehmann representation on the grid.
-
-        The imaginary frequency representation is defined as
-
-        .. math::
-            \sum_{k} \frac{v_{pk} u_{qk}^*}{i \omega - \epsilon_k},
-
-        and the real frequency representation is defined as
-
-        .. math::
-            \sum_{k} \frac{v_{pk} u_{qk}^*}{\omega - \epsilon_k \pm i \eta},
-
-        where :math:`\omega` is the frequency grid, :math:`\epsilon_k` are the poles, and the sign
-        of the broadening factor is determined by the time ordering.
-
-        Args:
-            lehmann: Lehmann representation to evaluate.
-            reduction: The reduction of the dynamic representation.
-            component: The component of the dynamic representation.
-            kwargs: Additional keyword arguments for the resolvent.
-
-        Returns:
-            Lehmann representation, realised on the grid.
-        """
-        from dyson.representations.dynamic import Dynamic  # noqa: PLC0415
-
-        left, right = lehmann.unpack_couplings()
-        resolvent = self.resolvent(lehmann.energies, lehmann.chempot, **kwargs)
-        reduction = Reduction(reduction)
-        component = Component(component)
-
-        # Get the input and output indices based on the reduction type
-        inp = "qk"
-        out = "wpq"
-        if reduction == reduction.NONE:
-            pass
-        elif reduction == reduction.DIAG:
-            inp = "pk"
-            out = "wp"
-        elif reduction == reduction.TRACE:
-            inp = "pk"
-            out = "w"
-        else:
-            reduction.raise_invalid_representation()
-
-        # Perform the downfolding operation
-        array = util.einsum(f"pk,{inp},wk->{out}", right, left.conj(), resolvent)
-
-        # Get the required component
-        # TODO: Save time by not evaluating the full array when not needed
-        if component == Component.REAL:
-            array = array.real
-        elif component == Component.IMAG:
-            array = array.imag
-
-        return Dynamic(
-            self, array, reduction=reduction, component=component, hermitian=lehmann.hermitian
-        )
 
     @property
     def domain(self) -> str:
@@ -100,26 +33,50 @@ class BaseFrequencyGrid(BaseGrid):
 
     @abstractmethod
     def resolvent(  # noqa: D417
-        self, energies: Array, chempot: float | Array, **kwargs: Any
+        self,
+        energies: Array,
+        chempot: float | Array,
+        ordering: Ordering = Ordering.ORDERED,
+        invert: bool = True,
     ) -> Array:
-        """Get the resolvent of the grid.
+        """Get the resolvent of a Lehmann representation on the grid.
 
         Args:
             energies: Energies of the poles.
             chempot: Chemical potential.
+            ordering: Time ordering of the resolvent.
+            invert: Whether to apply the inversion in the resolvent formula.
 
         Returns:
-            Resolvent of the grid.
+            Resolvent on the grid.
         """
         pass
 
+    def _lehmann_kernel(
+        self,
+        energies: Array,
+        chempot: float | Array,
+        ordering: Ordering = Ordering.ORDERED,
+    ) -> Array:
+        """Get the kernel of a Lehmann representation on the grid.
 
-class RealFrequencyGrid(BaseFrequencyGrid):
+        Args:
+            energies: Energies of the poles.
+            chempot: Chemical potential.
+            ordering: Time ordering of the resolvent.
+
+        Returns:
+            Kernel of a Lehmann representation on the grid.
+
+        Note:
+            The kernel is a hook to generalise the resolvent or propagator, depending on whether
+            the grid is in the frequency or time domain.
+        """
+        return self.resolvent(energies, chempot, ordering=ordering)
+
+
+class RealFrequencyGrid(BaseFrequencyGrid, BaseRealGrid):
     """Real frequency grid."""
-
-    eta: float = 1e-2
-
-    _options = {"eta"}
 
     def __init__(  # noqa: D417
         self, points: Array, weights: Array | None = None, **kwargs: Any
@@ -134,15 +91,6 @@ class RealFrequencyGrid(BaseFrequencyGrid):
         self._points = np.asarray(points)
         self._weights = np.asarray(weights) if weights is not None else None
         self.set_options(**kwargs)
-
-    @property
-    def reality(self) -> bool:
-        """Get the reality of the grid.
-
-        Returns:
-            Reality of the grid.
-        """
-        return True
 
     @staticmethod
     def _resolvent_signs(energies: Array, ordering: Ordering) -> Array:
@@ -165,9 +113,8 @@ class RealFrequencyGrid(BaseFrequencyGrid):
         chempot: float | Array,
         ordering: Ordering = Ordering.ORDERED,
         invert: bool = True,
-        **kwargs: Any,
     ) -> Array:
-        r"""Get the resolvent of the grid.
+        r"""Get the resolvent of a Lehmann representation on the grid.
 
         For real frequency grids, the resolvent is given by
 
@@ -184,20 +131,25 @@ class RealFrequencyGrid(BaseFrequencyGrid):
             invert: Whether to apply the inversion in the resolvent formula.
 
         Returns:
-            Resolvent of the grid.
+            Resolvent on the grid.
         """
-        if kwargs:
-            raise TypeError(f"resolvent() got unexpected keyword argument: {next(iter(kwargs))}")
-        signs = self._resolvent_signs(energies - chempot, ordering)
-        grid = np.expand_dims(self.points, axis=tuple(range(1, energies.ndim + 1)))
+        ndim = energies.ndim
+        if ndim > 2:
+            raise ValueError("energies array must be at most 2D")
+        if ndim < 2:
+            signs = self._resolvent_signs(energies - chempot, ordering)
+        else:
+            signs = self._resolvent_signs(np.diag(energies) - chempot, ordering)
+            signs = np.diag(signs)
+        grid = np.expand_dims(self.points, axis=tuple(range(1, ndim + 1)))
         energies = np.expand_dims(energies, axis=0)
         denominator = grid + (signs * 1.0j * self.eta - energies)
-        return 1.0 / denominator if invert else denominator
+        if invert:
+            return 1.0 / denominator if ndim < 2 else np.linalg.inv(denominator)
+        return denominator
 
     @classmethod
-    def from_uniform(
-        cls, start: float, stop: float, num: int, eta: float | None = None
-    ) -> RealFrequencyGrid:
+    def from_uniform(cls, start: float, stop: float, num: int, eta: float | None = None) -> Self:
         """Create a uniform real frequency grid.
 
         Args:
@@ -212,16 +164,33 @@ class RealFrequencyGrid(BaseFrequencyGrid):
         points = np.linspace(start, stop, num, endpoint=True)
         return cls(points, eta=eta)
 
+    @classmethod
+    def from_dual(cls, other: RealTimeGrid) -> Self:
+        """Create a grid from another grid in the dual domain (real time).
+
+        Args:
+            other: Other (real time) grid to create from.
+
+        Returns:
+            Real frequency grid.
+        """
+        if not other.uniformly_spaced:
+            raise NotImplementedError("only uniformly spaced grids are supported.")
+        if not other.uniformly_weighted:
+            raise NotImplementedError("only uniformly weighted grids are supported.")
+        if other.domain != "time" or not other.reality:
+            raise ValueError(f"dual grid for {cls.__name__} must be of type RealTimeGrid")
+        spacing = 2.0 * np.pi / (other.separation * len(other))
+        num = len(other)
+        points = np.linspace(-spacing * (num - 1) / 2, spacing * (num + 1) / 2, num, endpoint=False)
+        return cls(points, eta=other.eta)
+
 
 GridRF = RealFrequencyGrid
 
 
-class ImaginaryFrequencyGrid(BaseFrequencyGrid):
+class ImaginaryFrequencyGrid(BaseFrequencyGrid, BaseImaginaryGrid):
     """Imaginary frequency grid."""
-
-    beta: float = 256
-
-    _options = {"beta"}
 
     def __init__(  # noqa: D417
         self, points: Array, weights: Array | None = None, **kwargs: Any
@@ -237,23 +206,14 @@ class ImaginaryFrequencyGrid(BaseFrequencyGrid):
         self._weights = np.asarray(weights) if weights is not None else None
         self.set_options(**kwargs)
 
-    @property
-    def reality(self) -> bool:
-        """Get the reality of the grid.
-
-        Returns:
-            Reality of the grid.
-        """
-        return False
-
     def resolvent(  # noqa: D417
         self,
         energies: Array,
         chempot: float | Array,
+        ordering: Ordering = Ordering.ORDERED,
         invert: bool = True,
-        **kwargs: Any,
     ) -> Array:
-        r"""Get the resolvent of the grid.
+        r"""Get the resolvent of a Lehmann representation on the grid.
 
         For imaginary frequency grids, the resolvent is given by
 
@@ -265,20 +225,24 @@ class ImaginaryFrequencyGrid(BaseFrequencyGrid):
         Args:
             energies: Energies of the poles.
             chempot: Chemical potential.
+            ordering: Time ordering of the resolvent.
             invert: Whether to apply the inversion in the resolvent formula.
 
         Returns:
-            Resolvent of the grid.
+            Resolvent on the grid.
         """
-        if kwargs:
-            raise TypeError(f"resolvent() got unexpected keyword argument: {next(iter(kwargs))}")
-        grid = np.expand_dims(self.points, axis=tuple(range(1, energies.ndim + 1)))
+        ndim = energies.ndim
+        if ndim > 2:
+            raise ValueError("energies array must be at most 2D")
+        grid = np.expand_dims(self.points, axis=tuple(range(1, ndim + 1)))
         energies = np.expand_dims(energies, axis=0)
         denominator = 1.0j * grid - energies
-        return 1.0 / denominator if invert else denominator
+        if invert:
+            return 1.0 / denominator if ndim < 2 else np.linalg.inv(denominator)
+        return denominator
 
     @classmethod
-    def from_uniform(cls, num: int, beta: float | None = None) -> ImaginaryFrequencyGrid:
+    def from_uniform(cls, num: int, beta: float | None = None) -> Self:
         """Create a uniform imaginary frequency grid.
 
         Args:
@@ -290,16 +254,13 @@ class ImaginaryFrequencyGrid(BaseFrequencyGrid):
         """
         if beta is None:
             beta = cls.beta
-        separation = 2.0 * np.pi / beta
-        start = 0.5 * separation
-        stop = (num - 0.5) * separation
-        points = np.linspace(start, stop, num, endpoint=True)
+        points = (2 * np.arange(num) + 1) * np.pi / beta
         return cls(points, beta=beta)
 
     @classmethod
     def from_legendre(
         cls, num: int, diffuse_factor: float = 1.0, beta: float | None = None
-    ) -> ImaginaryFrequencyGrid:
+    ) -> Self:
         """Create a Legendre imaginary frequency grid.
 
         Args:
@@ -313,6 +274,24 @@ class ImaginaryFrequencyGrid(BaseFrequencyGrid):
         points, weights = scipy.special.roots_legendre(num)
         points = (1 - points) / (diffuse_factor * (1 + points))
         return cls(points, weights=weights, beta=beta)
+
+    @classmethod
+    def from_dual(cls, other: ImaginaryTimeGrid) -> Self:
+        """Create a grid from another grid in the dual domain (imaginary time).
+
+        Args:
+            other: Other (imaginary time) grid to create from.
+
+        Returns:
+            Imaginary frequency grid.
+        """
+        if not other.uniformly_spaced:
+            raise NotImplementedError("only uniformly spaced grids are supported.")
+        if not other.uniformly_weighted:
+            raise NotImplementedError("only uniformly weighted grids are supported.")
+        if other.domain != "time" or other.reality:
+            raise ValueError(f"dual grid for {cls.__name__} must be of type ImaginaryTimeGrid")
+        return cls.from_uniform(len(other) // 2, other.beta)  # Use τ:ω ratio of 2:1
 
 
 GridIF = ImaginaryFrequencyGrid

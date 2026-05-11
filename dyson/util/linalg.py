@@ -626,3 +626,54 @@ def rotate_subspace(vectors: Array, rotation: Array) -> Array:
     size = rotation.shape[0]
     subspace = rotation @ vectors[:size]
     return set_subspace(vectors, subspace)
+
+
+def upper_bound_for_exp(x: Array, factor: float = 1.0) -> Array:
+    r"""Upper bound for the exponential function to avoid overflow.
+
+    For 64-bit floats, this is equivalent to ensuring that
+
+    .. math
+        \exp(x \times \mathrm{factor}) \leq \exp(709.78).
+
+    Args:
+        x: Input array.
+        factor: Scaling factor for the input array.
+
+    Returns:
+        The upper-bounded array.
+    """
+    dtype_max = np.finfo(x.dtype).max
+    threshold = np.log(dtype_max) / factor
+    return np.minimum(x, threshold)
+
+
+def exp(x: Array) -> Array:
+    """Exponentiate an array with overflow protection."""
+    return np.exp(upper_bound_for_exp(x))
+
+
+def lower_bound_for_reciprocal(x: Array, factor: float = 1.0) -> Array:
+    r"""Lower bound for the reciprocal function to avoid overflow.
+
+    For 64-bit floats, this is equivalent to ensuring that
+
+    .. math
+        \vert x \times \mathrm{factor} \vert \geq 5.56 \times 10^{-309}.
+
+    Args:
+        x: Input array.
+        factor: Scaling factor for the input array.
+
+    Returns:
+        The lower-bounded array.
+    """
+    dtype_min = np.finfo(x.dtype).tiny
+    threshold = dtype_min / factor
+    signs = np.where(x >= 0, 1, -1)
+    return np.where(np.abs(x) < threshold, signs * threshold, x)
+
+
+def reciprocal(x: Array) -> Array:
+    """Return the reciprocal of an array with overflow protection."""
+    return 1.0 / lower_bound_for_reciprocal(x)

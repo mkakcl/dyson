@@ -9,6 +9,7 @@ import pytest
 
 from dyson.expressions.hf import BaseHF
 from dyson.grids import RealFrequencyGrid
+from dyson.representations.enums import Ordering
 from dyson.solvers import CPGF
 
 if TYPE_CHECKING:
@@ -36,7 +37,7 @@ def test_vs_exact_solver(
     # Solve the Hamiltonian exactly
     exact = exact_cache(mf, expression_cls)
     assert exact.result is not None
-    gf_exact = grid.evaluate_lehmann(exact.result.get_greens_function(), ordering="advanced")
+    gf_exact = grid.evaluate_lehmann(exact.result.get_greens_function(), ordering=Ordering.ADVANCED)
 
     # Solve the Hamiltonian with CorrectionVector
     cpgf = CPGF.from_self_energy(

@@ -81,7 +81,7 @@ theme = {
 plt.rcParams.update(theme)
 
 
-def _unit_name(unit: str) -> str:
+def _unit_name(unit: Literal["Ha", "eV"]) -> str:
     """Return the name of the unit for SciPy."""
     if unit == "Ha":
         return "hartree"
@@ -91,13 +91,21 @@ def _unit_name(unit: str) -> str:
         raise ValueError(f"Unknown energy unit: {unit}. Use 'Ha' or 'eV'.")
 
 
-def _convert(energy: float, unit_from: str, unit_to: str) -> float:
+def _convert(
+    energy: float,
+    unit_from: Literal["Ha", "eV"],
+    unit_to: Literal["Ha", "eV"],
+    domain: Literal["frequency", "time"] = "frequency",
+) -> float:
     """Convert energies between Hartree and eV."""
     if unit_from == unit_to:
         return energy
-    unit_from = _unit_name(unit_from)
-    unit_to = _unit_name(unit_to)
-    return energy * scipy.constants.physical_constants[f"{unit_from}-{unit_to} relationship"][0]
+    if domain == "time":
+        unit_from, unit_to = unit_to, unit_from
+    convert = scipy.constants.physical_constants[
+        f"{_unit_name(unit_from)}-{_unit_name(unit_to)} relationship"
+    ][0]
+    return energy * convert
 
 
 def plot_lehmann(
@@ -172,7 +180,7 @@ def plot_dynamic(
             'real or imaginary part, use dynamic.copy(component="real") or '
             'dynamic.copy(component="imag") to create a copy with the desired component.'
         )
-    grid = _convert(dynamic.grid.points, "Ha", energy_unit)
+    grid = _convert(dynamic.grid.points, "Ha", energy_unit, domain=dynamic.grid.domain)
     array = dynamic.array
     if normalise:
         array = array / np.max(np.abs(array))

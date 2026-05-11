@@ -34,6 +34,10 @@ from dyson.util.linalg import (
     block_diag,
     set_subspace,
     rotate_subspace,
+    upper_bound_for_exp,
+    lower_bound_for_reciprocal,
+    exp,
+    reciprocal,
 )
 from dyson.util.moments import (
     se_moments_to_gf_moments,

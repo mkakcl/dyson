@@ -61,6 +61,7 @@ Submodules
     solver
     static
     dynamic
+    recipes
 
 """
 
@@ -73,3 +74,5 @@ from dyson.solvers.static.chempot import AufbauPrinciple, AuxiliaryShift
 from dyson.solvers.static.density import DensityRelaxation
 from dyson.solvers.dynamic.corrvec import CorrectionVector
 from dyson.solvers.dynamic.cpgf import CPGF
+from dyson.solvers.dynamic.direct import Direct
+from dyson.solvers.recipes import greens_function_from_hamiltonian

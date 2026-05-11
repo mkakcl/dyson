@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Generic, TypeVar
 from dyson import numpy as np
 from dyson import util
 from dyson.grids.grid import BaseGrid
-from dyson.representations.enums import Component, Reduction
+from dyson.representations.enums import Component, Ordering, Reduction
 from dyson.representations.representation import BaseRepresentation
 
 if TYPE_CHECKING:
@@ -32,18 +32,31 @@ def _cast_component(first: Component, second: Component) -> Component:
     return Component.FULL
 
 
+def _cast_ordering(first: Ordering, second: Ordering) -> Ordering:
+    """Find the ordering that is compatible with both orderings."""
+    if first == second:
+        return first
+    raise ValueError(f"Cannot cast orderings {first} and {second}.")
+
+
 def _cast_arrays(first: Dynamic[_TGrid], second: Dynamic[_TGrid]) -> tuple[Array, Array]:
     """Cast the arrays of two dynamic representations to the same component and reduction."""
     component = _cast_component(first.component, second.component)
     reduction = _cast_reduction(first.reduction, second.reduction)
-    array_first = first.as_dynamic(component=component, reduction=reduction).array
-    array_second = second.as_dynamic(component=component, reduction=reduction).array
+    ordering = _cast_ordering(first.ordering, second.ordering)
+    array_first = first.as_dynamic(
+        component=component, reduction=reduction, ordering=ordering
+    ).array
+    array_second = second.as_dynamic(
+        component=component, reduction=reduction, ordering=ordering
+    ).array
     return array_first, array_second
 
 
 def _same_grid(first: Dynamic[_TGrid], second: Dynamic[_TGrid]) -> bool:
     """Check if two dynamic representations have the same grid."""
     # TODO: Move to BaseGrid
+    # TODO: Cache by ID? This can be O(ngrid)
     if not isinstance(second.grid, type(first.grid)):
         return False
     if len(first.grid) != len(second.grid):
@@ -70,6 +83,7 @@ class Dynamic(BaseRepresentation, Generic[_TGrid]):
         array: Array,
         reduction: Reduction = Reduction.NONE,
         component: Component = Component.FULL,
+        ordering: Ordering = Ordering.ORDERED,
         hermitian: bool = False,
     ):
         """Initialise the object.
@@ -79,6 +93,7 @@ class Dynamic(BaseRepresentation, Generic[_TGrid]):
             array: The array of values at each point in the grid.
             reduction: The reduction of the dynamic representation.
             component: The component of the dynamic representation.
+            ordering: The time ordering of the dynamic representation.
             hermitian: Whether the array is Hermitian.
         """
         self._grid = grid
@@ -86,6 +101,7 @@ class Dynamic(BaseRepresentation, Generic[_TGrid]):
         self._hermitian = hermitian
         self._reduction = Reduction(reduction)
         self._component = Component(component)
+        self._ordering = Ordering(ordering)
         if array.shape[0] != len(grid):
             raise ValueError(
                 f"Array must have the same size as the grid in the first dimension, but got "
@@ -109,6 +125,7 @@ class Dynamic(BaseRepresentation, Generic[_TGrid]):
         grid: _TGrid,
         reduction: Reduction = Reduction.NONE,
         component: Component = Component.FULL,
+        ordering: Ordering = Ordering.ORDERED,
     ) -> Dynamic[_TGrid]:
         """Construct a dynamic representation from a Lehmann representation.
 
@@ -117,16 +134,19 @@ class Dynamic(BaseRepresentation, Generic[_TGrid]):
             grid: The grid on which the dynamic representation is defined.
             reduction: The reduction of the dynamic representation.
             component: The component of the dynamic representation.
+            ordering: The time ordering of the dynamic representation.
 
         Returns:
             A dynamic representation.
         """
-        return grid.evaluate_lehmann(lehmann, reduction=reduction, component=component)
+        return grid.evaluate_lehmann(
+            lehmann, reduction=reduction, component=component, ordering=ordering
+        )
 
     @property
     def nphys(self) -> int:
         """Get the number of physical degrees of freedom."""
-        return self.array.shape[-1]
+        return self.array.shape[-1] if self.reduction != Reduction.TRACE else 1
 
     @property
     def grid(self) -> _TGrid:
@@ -149,6 +169,11 @@ class Dynamic(BaseRepresentation, Generic[_TGrid]):
         return self._component
 
     @property
+    def ordering(self) -> Ordering:
+        """Get the time ordering of the dynamic representation."""
+        return self._ordering
+
+    @property
     def hermitian(self) -> bool:
         """Get a boolean indicating if the system is Hermitian."""
         return self._hermitian or self.reduction != Reduction.NONE
@@ -167,6 +192,7 @@ class Dynamic(BaseRepresentation, Generic[_TGrid]):
         deep: bool = True,
         reduction: Reduction | None = None,
         component: Component | None = None,
+        ordering: Ordering | None = None,
     ) -> Dynamic[_TGrid]:
         """Return a copy of the dynamic representation.
 
@@ -174,6 +200,7 @@ class Dynamic(BaseRepresentation, Generic[_TGrid]):
             deep: Whether to return a deep copy of the energies and couplings.
             component: The component of the dynamic representation.
             reduction: The reduction of the dynamic representation.
+            ordering: The time ordering of the dynamic representation.
 
         Returns:
             A new dynamic representation.
@@ -186,6 +213,9 @@ class Dynamic(BaseRepresentation, Generic[_TGrid]):
         if component is None:
             component = self.component
         component = Component(component)
+        if ordering is None:
+            ordering = self.ordering
+        ordering = Ordering(ordering)
 
         # Copy the array if requested
         if deep:
@@ -225,21 +255,45 @@ class Dynamic(BaseRepresentation, Generic[_TGrid]):
                     "representation."
                 )
 
-        return self.__class__(grid, array, hermitian=self.hermitian)
+        # Ordering must be the same
+        if ordering != self.ordering:
+            raise ValueError(
+                f"Cannot convert from {self.ordering} to {ordering} for dynamic representation. "
+                "This may be possible for a given dynamic representation, but cannot be "
+                "generalised for all grid types."
+            )
+
+        return self.__class__(
+            grid,
+            array,
+            hermitian=self.hermitian,
+            reduction=reduction,
+            component=component,
+            ordering=ordering,
+        )
 
     def as_dynamic(
-        self, component: Component | None = None, reduction: Reduction | None = None
+        self,
+        component: Component | None = None,
+        reduction: Reduction | None = None,
+        ordering: Ordering | None = None,
     ) -> Dynamic[_TGrid]:
         """Return the dynamic representation with the specified component and reduction.
 
         Args:
             component: The component of the dynamic representation.
             reduction: The reduction of the dynamic representation.
+            ordering: The time ordering of the dynamic representation.
 
         Returns:
             A new dynamic representation with the specified component and reduction.
         """
-        return self.copy(deep=False, component=component, reduction=reduction)
+        return self.copy(
+            deep=False,
+            component=component,
+            reduction=reduction,
+            ordering=ordering,
+        )
 
     def rotate(self, rotation: Array | tuple[Array, Array]) -> Dynamic[_TGrid]:
         """Rotate the dynamic representation.
@@ -273,6 +327,54 @@ class Dynamic(BaseRepresentation, Generic[_TGrid]):
             array,
             component=component,
             reduction=Reduction.NONE,
+            ordering=self.ordering,
+            hermitian=self.hermitian,
+        )
+
+    def inverse(self) -> Dynamic[_TGrid]:
+        """Return the inverse of the dynamic representation."""
+        if self.reduction == Reduction.NONE:
+            array = np.linalg.inv(self.array)
+        elif self.reduction == Reduction.DIAG:
+            array = 1.0 / self.array
+        elif self.reduction == Reduction.TRACE:
+            raise ValueError("Cannot invert a dynamic representation with trace reduction.")
+        else:
+            self.reduction.raise_invalid_representation()
+        return self.__class__(
+            self.grid,
+            array,
+            component=self.component,
+            reduction=self.reduction,
+            ordering=self.ordering,
+            hermitian=self.hermitian,
+        )
+
+    def conjugate(self) -> Dynamic[_TGrid]:
+        """Return the complex conjugate of the dynamic representation."""
+        return self.__class__(
+            self.grid,
+            np.conjugate(self.array),
+            component=self.component,
+            reduction=self.reduction,
+            ordering=self.ordering,
+            hermitian=self.hermitian,
+        )
+
+    def transpose(self) -> Dynamic[_TGrid]:
+        """Return the transpose of the dynamic representation."""
+        if self.reduction == Reduction.NONE:
+            array = np.transpose(self.array, axes=(0, 2, 1))
+        elif self.reduction in {Reduction.DIAG, Reduction.TRACE}:
+            array = self.array
+        else:
+            self.reduction.raise_invalid_representation()
+        return self.__class__(
+            self.grid,
+            array,
+            component=self.component,
+            reduction=self.reduction,
+            ordering=self.ordering,
             hermitian=self.hermitian,
         )
 
@@ -287,6 +389,7 @@ class Dynamic(BaseRepresentation, Generic[_TGrid]):
             np.add(*_cast_arrays(self, other)),
             component=_cast_component(self.component, other.component),
             reduction=_cast_reduction(self.reduction, other.reduction),
+            ordering=_cast_ordering(self.ordering, other.ordering),
             hermitian=self.hermitian or other.hermitian,
         )
 
@@ -301,6 +404,7 @@ class Dynamic(BaseRepresentation, Generic[_TGrid]):
             np.subtract(*_cast_arrays(self, other)),
             component=_cast_component(self.component, other.component),
             reduction=_cast_reduction(self.reduction, other.reduction),
+            ordering=_cast_ordering(self.ordering, other.ordering),
             hermitian=self.hermitian or other.hermitian,
         )
 
@@ -313,6 +417,7 @@ class Dynamic(BaseRepresentation, Generic[_TGrid]):
             self.array * other,
             component=self.component,
             reduction=self.reduction,
+            ordering=self.ordering,
             hermitian=self.hermitian,
         )
 

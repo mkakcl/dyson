@@ -303,6 +303,7 @@ class CorrectionVector(DynamicSolver):
             greens_function,
             reduction=self.reduction,
             component=self.component,
+            ordering=self.ordering,
             hermitian=self.get_state_ket is None,
         )
 
