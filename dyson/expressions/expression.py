@@ -11,7 +11,7 @@ from dyson import util
 from dyson.representations.enums import Reduction
 
 if TYPE_CHECKING:
-    from typing import Callable
+    from typing import Callable, Sequence
 
     from pyscf.gto.mole import Mole
     from pyscf.scf.hf import RHF
@@ -467,6 +467,175 @@ class BaseExpression(ABC):
     def nvir(self) -> int:
         """Number of virtual orbitals."""
         return self.nphys - self.nocc
+
+
+class BaseUExpression(BaseExpression):
+    """Base class for unrestricted (spin-blocked) expressions.
+
+    For a collinear unrestricted reference the Green's function is block-diagonal in spin: only the
+    alpha-alpha and beta-beta blocks of the moments are nonzero, while the alpha-beta / beta-alpha
+    cross blocks vanish exactly. This class adds :func:`build_gf_moments_spin`, which computes only
+    the two same-spin blocks (skipping the structurally-zero cross blocks) and returns them as a
+    tuple of per-spin moment arrays.
+
+    Subclasses must provide :attr:`nmo` as an ``(nmoa, nmob)`` tuple and lay out the physical
+    orbitals as the alpha block ``[0, nmoa)`` followed by the beta block ``[nmoa, nmoa + nmob)``.
+    """
+
+    #: Whether the spin-blocked moments use the left-handed Hamiltonian application. Overridden by
+    #: sector subclasses so the caller need not pass ``left`` (e.g. when only one matvec direction
+    #: is available).
+    _gf_moments_left: bool = False
+
+    @property
+    def _spin_sectors(self) -> tuple[Sequence[int], Sequence[int]]:
+        """Physical-orbital index ranges for the alpha and beta spin sectors."""
+        nmoa, nmob = self.nmo
+        return range(0, nmoa), range(nmoa, nmoa + nmob)
+
+    def _build_block_gf_moments(
+        self,
+        orbitals: Sequence[int],
+        nmom: int,
+        store_vectors: bool = True,
+        left: bool = False,
+        reduction: Reduction = Reduction.NONE,
+    ) -> Array:
+        """Build the Green's function moments restricted to a subset of physical orbitals.
+
+        The bra and ket are both restricted to ``orbitals``; the returned moments are the
+        corresponding principal sub-block of the full :func:`build_gf_moments` result. The loop and
+        the ``left`` transpose mirror :func:`_build_gf_moments` / :func:`build_gf_moments`, using
+        local index enumeration.
+        """
+        # Get the appropriate functions (matches build_gf_moments)
+        if left:
+            get_bra = self.get_excitation_ket
+            get_ket = self.get_excitation_bra
+            apply_hamiltonian = self.apply_hamiltonian_left
+        else:
+            get_bra = self.get_excitation_bra
+            get_ket = self.get_excitation_ket
+            apply_hamiltonian = self.apply_hamiltonian_right
+
+        orbitals = list(orbitals)
+        size = len(orbitals)
+
+        # Precompute bra vectors if needed
+        if store_vectors:
+            bras = [get_bra(p) for p in orbitals]
+
+        # Loop over ket vectors
+        moments: dict[tuple[int, int, int], Array] = {}
+        for i, orbital_i in enumerate(orbitals):
+            ket = get_ket(orbital_i)
+
+            # Loop over moment orders
+            for n in range(nmom):
+                if Reduction(reduction) == Reduction.NONE:
+                    # Loop over bra vectors
+                    for j in range(i if self.hermitian_downfolded else 0, size):
+                        bra = bras[j] if store_vectors else get_bra(orbitals[j])
+
+                        # Contract the bra and ket vectors
+                        moments[n, j, i] = bra.conj() @ ket
+                        if self.hermitian_downfolded:
+                            moments[n, i, j] = moments[n, j, i].conj()
+
+                else:
+                    # Contract the bra and ket vectors
+                    bra = bras[i] if store_vectors else get_bra(orbital_i)
+                    moments[n, i, i] = bra.conj() @ ket
+
+                # Apply the Hamiltonian to the ket vector
+                if n != nmom - 1:
+                    ket = apply_hamiltonian(ket)
+
+        if Reduction(reduction) == Reduction.NONE:
+            moments_array = np.array(
+                [moments[n, i, j] for n in range(nmom) for i in range(size) for j in range(size)]
+            )
+            moments_array = moments_array.reshape(nmom, size, size)
+
+            # Transpose if necessary
+            if left:
+                moments_array = moments_array.transpose(0, 2, 1).conj()
+
+        elif Reduction(reduction) == Reduction.DIAG:
+            moments_array = np.array(
+                [moments[n, i, i] for n in range(nmom) for i in range(size)]
+            )
+            moments_array = moments_array.reshape(nmom, size)
+
+        elif Reduction(reduction) == Reduction.TRACE:
+            moments_array = np.array(
+                [sum([moments[n, i, i] for i in range(size)]) for n in range(nmom)]
+            )
+
+        else:
+            Reduction(reduction).raise_invalid_representation()
+
+        return moments_array
+
+    def build_gf_moments_spin(
+        self,
+        nmom: int,
+        store_vectors: bool = True,
+        reduction: Reduction = Reduction.NONE,
+        left: bool | None = None,
+        block_diagonal: bool = False,
+    ) -> tuple[Array, Array] | Array:
+        """Build the spin-blocked moments of the Green's function.
+
+        Only the two same-spin (alpha-alpha and beta-beta) blocks are computed; the
+        cross-spin blocks are constrained to be zero for spin conserving Hamiltonians.
+
+        Args:
+            nmom: Number of moments to compute.
+            store_vectors: Whether to store the excitation vectors.
+            reduction: Reduction to apply to the moments.
+            left: Whether to use the left-handed Hamiltonian application. Defaults to
+                :attr:`_gf_moments_left` (set per sector), so the caller need not pass it.
+            block_diagonal: If ``True``, assemble the two spin blocks into a single full
+                block-diagonal array (with the zero cross-spin blocks), matching the shape of
+                :func:`build_gf_moments`. If ``False`` (default), return the blocks as a tuple.
+
+        Returns:
+            If ``block_diagonal=False``, a tuple ``(alpha, beta)`` of per-spin moment arrays, of
+            shapes ``(nmom, nmoa, nmoa)`` and ``(nmom, nmob, nmob)`` for ``reduction=Reduction.NONE``
+            (and the corresponding reduced shapes otherwise). If ``block_diagonal=True``, a single
+            array of the same shape as :func:`build_gf_moments` (``(nmom, nphys, nphys)`` for
+            ``Reduction.NONE``).
+        """
+        left = self._gf_moments_left if left is None else left
+        sector_a, sector_b = self._spin_sectors
+        alpha = self._build_block_gf_moments(
+            sector_a, nmom, store_vectors=store_vectors, left=left, reduction=reduction
+        )
+        beta = self._build_block_gf_moments(
+            sector_b, nmom, store_vectors=store_vectors, left=left, reduction=reduction
+        )
+
+        if not block_diagonal:
+            return alpha, beta
+
+        # Assemble the two blocks into the full result (the cross blocks are zero).
+        idx_a = list(sector_a)
+        idx_b = list(sector_b)
+        dtype = np.result_type(alpha.dtype, beta.dtype)
+        if Reduction(reduction) == Reduction.TRACE:
+            return alpha + beta
+        elif Reduction(reduction) == Reduction.DIAG:
+            moments = np.zeros((nmom, len(idx_a) + len(idx_b)), dtype=dtype)
+            moments[:, idx_a] = alpha
+            moments[:, idx_b] = beta
+            return moments
+        else:
+            nphys = len(idx_a) + len(idx_b)
+            moments = np.zeros((nmom, nphys, nphys), dtype=dtype)
+            moments[np.ix_(range(nmom), idx_a, idx_a)] = alpha
+            moments[np.ix_(range(nmom), idx_b, idx_b)] = beta
+            return moments
 
 
 class _ExpressionCollectionMeta(type):

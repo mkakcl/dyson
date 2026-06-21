@@ -87,6 +87,8 @@ Submodules
 
 from dyson.expressions.hf import HF
 from dyson.expressions.ccsd import CCSD
+from dyson.expressions.gccsd import GCCSD
+from dyson.expressions.uccsd import UCCSD
 from dyson.expressions.fci import FCI
 from dyson.expressions.adc import ADC2, ADC2x
 from dyson.expressions.hamiltonian import Hamiltonian
