@@ -136,4 +136,4 @@ from dyson.solvers import (
     CorrectionVector,
     CPGF,
 )
-from dyson.expressions import HF, CCSD, FCI, ADC2, ADC2x, Hamiltonian
+from dyson.expressions import HF, CCSD, GCCSD, UCCSD, FCI, ADC2, ADC2x, Hamiltonian
