@@ -22,6 +22,8 @@ from dyson.util.linalg import (
     eig,
     eig_lr,
     matrix_power,
+    matrix_power_with_info,
+    MatrixPowerInfo,
     hermi_sum,
     scaled_error,
     as_diagonal,

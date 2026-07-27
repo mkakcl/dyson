@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import functools
 import warnings
 from typing import TYPE_CHECKING, cast
@@ -367,27 +368,115 @@ def project_eigenvectors(
     return eigvecs
 
 
+@dataclasses.dataclass(frozen=True)
+class MatrixPowerInfo:
+    """Diagnostics for a matrix power computed by eigenvalue decomposition.
+
+    Args:
+        power: The power the matrix was raised to.
+        threshold: The effective support cutoff, ``atol + rtol * eigval_max``. Eigenvalues whose
+            magnitude does not exceed this are outside the effective support.
+        eigval_min: The smallest eigenvalue, signed and before any masking. Negative values
+            indicate the input was not positive semi-definite.
+        eigval_max: The largest eigenvalue by magnitude, which sets the scale of the problem.
+        rank: The effective rank, that is the number of eigenvalues inside the support.
+        size: The total number of eigenvalues.
+        condition: An estimate of the condition number over the retained support,
+            ``eigval_max`` divided by the smallest retained magnitude. Infinite if nothing is
+            retained.
+        discarded_norm: The norm of the part of the **input** lying outside the effective
+            support. This measures how much of the input was thrown away; it is *not* the error
+            in the power, and for a negative power it bears no relation to it.
+        material_negative: The most negative eigenvalue found beyond the rounding tolerance,
+            or zero if there was none. A non-zero value means the input was not positive
+            semi-definite and a direction with no real root was discarded.
+        error: The norm of the discarded contribution to the **returned** matrix. For a negative
+            power the discarded eigenvalues are floored at :attr:`threshold` before being raised,
+            so this is a finite lower bound on what truncation cost rather than a value that
+            diverges as an eigenvalue approaches zero.
+    """
+
+    power: float
+    threshold: float
+    eigval_min: float
+    eigval_max: float
+    rank: int
+    size: int
+    condition: float
+    discarded_norm: float
+    error: float
+    material_negative: float = 0.0
+
+    @property
+    def truncated(self) -> bool:
+        """Whether any direction fell outside the effective support."""
+        return self.rank < self.size
+
+
 @cache_by_id
-def matrix_power(
+def matrix_power_with_info(
     matrix: Array,
     power: int | float,
     hermitian: bool = True,
-    threshold: float = 1e-10,
-    return_error: bool = False,
+    *,
+    atol: float = 1e-10,
+    rtol: float = 1e-12,
+    threshold: float | None = None,
+    neg_atol: float | None = None,
+    neg_rtol: float = 1e-8,
+    strict: bool = False,
+    shared_support: bool = False,
     ord: int | float = np.inf,
-) -> tuple[Array, float | None]:
-    """Compute the power of a matrix via the eigenvalue decomposition.
+) -> tuple[Array, MatrixPowerInfo]:
+    """Compute the power of a matrix via the eigenvalue decomposition, with diagnostics.
+
+    The effective support is chosen once, from the magnitude of the eigenvalues, and is
+    independent of the sign of ``power``. A matrix and its inverse therefore share a support, so
+    that ``A**p @ A**-p`` is the projector onto that support. Choosing the support separately for
+    each power, as an inverse-only cutoff does, leaves the pair inconsistent: the positive power
+    retains directions the negative power cannot invert.
+
+    The cutoff is scale-aware. An absolute cutoff is only meaningful for a matrix whose scale is
+    order one; ``atol + rtol * eigval_max`` tracks the scale of the input.
 
     Args:
         matrix: The matrix to be exponentiated.
         power: The power to which the matrix is to be raised.
         hermitian: Whether the matrix is hermitian.
-        threshold: Threshold for removing singularities.
-        return_error: Whether to return the error in the power.
-        ord: The order of the norm to be used for the error.
+        atol: Absolute part of the support cutoff.
+        rtol: Relative part of the support cutoff, scaled by the largest eigenvalue magnitude.
+        threshold: If given, an absolute cutoff used in place of ``atol + rtol * eigval_max``.
+        neg_atol: Absolute part of the tolerance on negative eigenvalues. Defaults to ``atol``.
+        neg_rtol: Relative part of the tolerance on negative eigenvalues, scaled by the largest
+            eigenvalue magnitude. A negative eigenvalue within ``neg_atol + neg_rtol *
+            eigval_max`` of zero is treated as a rounding artefact of a positive semi-definite
+            input and clipped; anything beyond is material and raises. The default is loose
+            compared to the support cutoff because these matrices are typically produced by a
+            recurrence rather than a single decomposition: the zeroth moments built by the
+            moment block Lanczos solvers carry negative eigenvalues up to roughly ``1e-9``
+            relative to their largest, which is accumulated recurrence error rather than genuine
+            indefiniteness. Only consulted when a fractional power of a real Hermitian matrix is
+            requested.
+        shared_support: Whether every power shares one effective support, rather than only
+            negative powers applying the cutoff. Off by default: it is the mathematically
+            consistent choice, but it moves near-singular results by of order the square root
+            of the cutoff, which is far larger than the cutoff itself. Turning it on is gated
+            on the error budget of roadmap milestone 3.
+        strict: Whether a materially negative eigenvalue is an error rather than a warning.
+            Defaults to warning, because the moment block Lanczos recurrence currently
+            produces such matrices routinely and refusing them outright would leave callers
+            with no result at all. Graceful reduction to the largest supportable order is
+            roadmap milestone 1.3; this should default to ``True`` once that exists.
+        ord: The order of the norm to be used for the norms reported.
 
     Returns:
-        The matrix raised to the power, and the error if requested.
+        The matrix raised to the power, and the diagnostics.
+
+    Raises:
+        ValueError: If ``strict`` and a fractional power of a real Hermitian matrix is
+            requested while an eigenvalue is materially negative, meaning the input is not
+            positive semi-definite to within rounding. Such a direction has no real root, and
+            discarding it silently reports a small error for a result that is simply wrong.
     """
     # TODO: Check if scipy.linalg.fractional_matrix_power is better
 
@@ -398,37 +487,127 @@ def matrix_power(
     else:
         left = np.linalg.inv(right).T.conj()
 
-    # Get the mask for removing singularities
-    if power < 0:
-        mask = np.abs(eigvals) > threshold
-    else:
-        mask = np.ones_like(eigvals, dtype=bool)
+    # Keep the requested power as a real number: it may be promoted to complex below, after
+    # which comparisons against zero are no longer defined.
+    power_value = float(power)
 
-    # Get the mask for removing negative eigenvalues
-    if hermitian and not np.iscomplexobj(matrix):
-        if np.abs(power) < 1:
-            mask &= eigvals > 0
+    # Set the scale of the problem from the eigenvalues themselves
+    magnitudes = np.abs(eigvals)
+    eigval_max = float(np.max(magnitudes)) if magnitudes.size else 0.0
+    cutoff = float(threshold) if threshold is not None else atol + rtol * eigval_max
+
+    # Choose the support. Sharing it across powers makes ``A**p @ A**-p`` the projector onto
+    # that support, which an inverse-only cutoff does not: the positive power otherwise keeps
+    # directions the negative power cannot invert. It is not the default because the two
+    # powers do not deserve the same cutoff -- a direction with eigenvalue 1e-11 contributes
+    # only 1e-11 to the matrix but 3e-6 to its square root -- so imposing the inverse's
+    # support on the forward power discards contributions far above the cutoff.
+    if shared_support or power_value < 0:
+        mask = magnitudes > cutoff
     else:
-        if np.any(eigvals < 0):
-            power: complex = power + 0.0j  # type: ignore[no-redef]
+        mask = np.ones_like(magnitudes, dtype=bool)
+
+    # A fractional power of a real Hermitian matrix needs a real root, so the input must be
+    # positive semi-definite. Distinguish rounding noise, which is clipped, from a materially
+    # negative direction, which is not representable and must not be silently dropped.
+    material_negative = 0.0
+    real_hermitian = hermitian and not np.iscomplexobj(matrix)
+    if real_hermitian and not power_value.is_integer():
+        negative_cutoff = (atol if neg_atol is None else float(neg_atol)) + neg_rtol * eigval_max
+        material = eigvals < -negative_cutoff
+        if np.any(material):
+            material_negative = float(np.min(eigvals))
+            message = (
+                f"Cannot raise a matrix to the fractional power {power_value}: "
+                f"{int(np.count_nonzero(material))} eigenvalue(s) are negative beyond rounding, "
+                f"the smallest being {material_negative:.6e} against a tolerance of "
+                f"{-negative_cutoff:.6e} and a largest eigenvalue of {eigval_max:.6e}. "
+                "The input is not positive semi-definite."
+            )
+            if strict:
+                raise ValueError(message)
+            warnings.warn(
+                f"{message} Discarding the direction, which is what previous versions did "
+                "silently. Pass strict=True to refuse instead.",
+                UserWarning,
+                2,
+            )
+        mask &= eigvals > 0
+    elif not real_hermitian and np.any(eigvals < 0):
+        power = power + 0.0j  # type: ignore[assignment]
 
     # Contract the eigenvalues and eigenvectors
-    matrix_power: Array = (right[:, mask] * eigvals[mask][None] ** power) @ left[:, mask].T.conj()
+    result: Array = (right[:, mask] * eigvals[mask][None] ** power) @ left[:, mask].T.conj()
 
-    # Get the error if requested
-    error: float | None = None
-    if return_error:
-        null = (right[:, ~mask] * eigvals[~mask][None]) @ left[:, ~mask].T.conj()
-        if null.size == 0:
-            error = 0.0
-        else:
-            error = cast(float, np.linalg.norm(null, ord=ord))
+    # Measure what was discarded, both as a fraction of the input and as a contribution to the
+    # result. These are different questions, and for a negative power they differ wildly.
+    discarded_norm = 0.0
+    error = 0.0
+    if np.any(~mask):
+        discarded = (right[:, ~mask] * eigvals[~mask][None]) @ left[:, ~mask].T.conj()
+        discarded_norm = cast(float, np.linalg.norm(discarded, ord=ord))
+
+        # Floor the discarded magnitudes so a negative power stays finite: below the cutoff the
+        # eigenvalues are indistinguishable, so the cutoff is the most that can be claimed.
+        magnitude = np.maximum(magnitudes[~mask], cutoff) if power_value < 0 else magnitudes[~mask]
+        contribution = (right[:, ~mask] * (magnitude**power)[None]) @ left[:, ~mask].T.conj()
+        error = cast(float, np.linalg.norm(contribution, ord=ord))
 
     # See if we can remove the imaginary part of the matrix power
-    if np.iscomplexobj(matrix_power) and np.all(np.isclose(matrix_power.imag, 0.0)):
-        matrix_power = matrix_power.real
+    if np.iscomplexobj(result) and np.all(np.isclose(result.imag, 0.0)):
+        result = result.real
 
-    return matrix_power, error
+    # A retained eigenvalue may be exactly zero when no cutoff is applied to a positive
+    # power, in which case the decomposition is singular and the condition is infinite.
+    retained = magnitudes[mask]
+    smallest_retained = float(np.min(retained)) if retained.size else 0.0
+    condition = eigval_max / smallest_retained if smallest_retained > 0.0 else float(np.inf)
+    info = MatrixPowerInfo(
+        power=power_value,
+        threshold=cutoff,
+        eigval_min=float(np.min(np.real(eigvals))) if eigvals.size else 0.0,
+        eigval_max=eigval_max,
+        rank=int(np.count_nonzero(mask)),
+        size=int(eigvals.size),
+        condition=condition,
+        discarded_norm=discarded_norm,
+        error=error,
+        material_negative=material_negative,
+    )
+
+    return result, info
+
+
+def matrix_power(
+    matrix: Array,
+    power: int | float,
+    hermitian: bool = True,
+    *,
+    threshold: float | None = None,
+    return_error: bool = False,
+    strict: bool = False,
+    ord: int | float = np.inf,
+) -> tuple[Array, float | None]:
+    """Compute the power of a matrix via the eigenvalue decomposition.
+
+    Args:
+        matrix: The matrix to be exponentiated.
+        power: The power to which the matrix is to be raised.
+        hermitian: Whether the matrix is hermitian.
+        threshold: If given, an absolute cutoff used in place of the scale-aware default.
+        return_error: Whether to return the error in the power.
+        strict: Whether a materially negative eigenvalue is an error rather than a warning.
+        ord: The order of the norm to be used for the error.
+
+    Returns:
+        The matrix raised to the power, and, if requested, the norm of the discarded
+        contribution to that power. Use :func:`matrix_power_with_info` for the full diagnostics,
+        including the effective rank, the condition estimate and the discarded input norm.
+    """
+    result, info = matrix_power_with_info(
+        matrix, power, hermitian=hermitian, threshold=threshold, strict=strict, ord=ord
+    )
+    return result, info.error if return_error else None
 
 
 def hermi_sum(matrix: Array) -> Array:

@@ -6,7 +6,7 @@ import warnings
 from typing import TYPE_CHECKING
 
 from dyson import numpy as np
-from dyson.util.linalg import einsum, matrix_power
+from dyson.util.linalg import einsum, matrix_power_with_info
 
 if TYPE_CHECKING:
     from dyson.typing import Array
@@ -36,22 +36,19 @@ def se_moments_to_gf_moments(
     # Orthogonalise the moments
     if overlap is not None:
         hermitian = np.allclose(overlap, overlap.T.conj())
-        orth, error_orth = matrix_power(
-            overlap, -0.5, hermitian=hermitian, return_error=check_error
-        )
-        unorth, error_unorth = matrix_power(
-            overlap, 0.5, hermitian=hermitian, return_error=check_error
-        )
-        if check_error:
-            assert error_orth is not None and error_unorth is not None
-            error = max(error_orth, error_unorth)
-            if error > 1e-10:
-                warnings.warn(
-                    "Space contributing non-zero weight to the zeroth moments "
-                    f"({max(error_orth, error_unorth)}) was removed during moment conversion.",
-                    UserWarning,
-                    2,
-                )
+        orth, info = matrix_power_with_info(overlap, -0.5, hermitian=hermitian)
+        unorth, _ = matrix_power_with_info(overlap, 0.5, hermitian=hermitian)
+        # The two powers share an effective support, so either reports the same discarded
+        # weight. This is the norm of the removed part of the overlap, not the error in the
+        # inverse square root, which the removed weight does not bound.
+        if check_error and info.discarded_norm > 1e-10:
+            warnings.warn(
+                f"Space contributing non-zero weight ({info.discarded_norm}) to the zeroth "
+                f"moments was removed during moment conversion, reducing the rank from "
+                f"{info.size} to {info.rank}.",
+                UserWarning,
+                2,
+            )
         static = orth @ static @ orth
         se_moments = einsum("npq,ip,qj->nij", se_moments, orth, orth)
 
@@ -103,22 +100,18 @@ def gf_moments_to_se_moments(gf_moments: Array, check_error: bool = True) -> tup
     ident = np.allclose(gf_moments[0], np.eye(nphys))
     if not ident:
         hermitian = np.allclose(gf_moments[0], gf_moments[0].T.conj())
-        orth, error_orth = matrix_power(
-            gf_moments[0], -0.5, hermitian=hermitian, return_error=check_error
-        )
-        unorth, error_unorth = matrix_power(
-            gf_moments[0], 0.5, hermitian=hermitian, return_error=check_error
-        )
-        if check_error:
-            assert error_orth is not None and error_unorth is not None
-            error = max(error_orth, error_unorth)
-            if error > 1e-10:
-                warnings.warn(
-                    "Space contributing non-zero weight to the zeroth moments "
-                    f"({max(error_orth, error_unorth)}) was removed during moment conversion.",
-                    UserWarning,
-                    2,
-                )
+        orth, info = matrix_power_with_info(gf_moments[0], -0.5, hermitian=hermitian)
+        unorth, _ = matrix_power_with_info(gf_moments[0], 0.5, hermitian=hermitian)
+        # As above: the discarded weight of the zeroth moment, not the error in its inverse
+        # square root.
+        if check_error and info.discarded_norm > 1e-10:
+            warnings.warn(
+                f"Space contributing non-zero weight ({info.discarded_norm}) to the zeroth "
+                f"moments was removed during moment conversion, reducing the rank from "
+                f"{info.size} to {info.rank}.",
+                UserWarning,
+                2,
+            )
         gf_moments = einsum("npq,ip,qj->nij", gf_moments, orth, orth)
 
     # Get the static part and the moments of the self-energy
