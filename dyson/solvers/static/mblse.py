@@ -224,17 +224,16 @@ class MBLSE(BaseMBL):
             **kwargs,
         )
 
-    def reconstruct_moments(self, iteration: int) -> Array:
-        """Reconstruct the moments.
+    def reconstruct_representation(self, iteration: int) -> Lehmann:
+        """Reconstruct the self-energy implied by the recurrence.
 
         Args:
             iteration: The iteration number.
 
         Returns:
-            The reconstructed moments.
+            The reconstructed self-energy.
         """
-        self_energy = self.solve(iteration=iteration).get_self_energy()
-        return self_energy.moments(range(2 * iteration))
+        return self.solve(iteration=iteration).get_self_energy()
 
     def initialise_recurrence(self) -> tuple[float | None, float | None, float | None]:
         """Initialise the recurrence (zeroth iteration).
@@ -480,6 +479,7 @@ class MLSE(MBLSE):
     """
 
     Coefficients = ScalarRecursionCoefficients  # type: ignore[assignment]
+    moment_reduction = Reduction.TRACE
 
     def __post_init__(self) -> None:
         """Hook called after :meth:`__init__`."""
@@ -550,18 +550,6 @@ class MLSE(MBLSE):
             The orthogonalised moment.
         """
         return self.moments[order] / self.moments[0]
-
-    def reconstruct_moments(self, iteration: int) -> Array:
-        """Reconstruct the moments.
-
-        Args:
-            iteration: The iteration number.
-
-        Returns:
-            The reconstructed moments.
-        """
-        self_energy = self.solve(iteration=iteration).get_self_energy()
-        return self_energy.moments(range(2 * iteration), reduction=Reduction.TRACE)
 
     def initialise_recurrence(self) -> tuple[float | None, float | None, float | None]:
         """Initialise the recurrence (zeroth iteration).
