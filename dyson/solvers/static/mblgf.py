@@ -172,17 +172,16 @@ class MBLGF(BaseMBL):
         moments = expression.build_gf_moments(2 * kwargs.get("max_cycle", 0) + 2)
         return cls(moments, hermitian=expression.hermitian_downfolded, **kwargs)
 
-    def reconstruct_moments(self, iteration: int) -> Array:
-        """Reconstruct the moments.
+    def reconstruct_representation(self, iteration: int) -> Lehmann:
+        """Reconstruct the Green's function implied by the recurrence.
 
         Args:
             iteration: The iteration number.
 
         Returns:
-            The reconstructed moments.
+            The reconstructed Green's function.
         """
-        greens_function = self.solve(iteration=iteration).get_greens_function()
-        return greens_function.moments(range(2 * iteration + 2))
+        return self.solve(iteration=iteration).get_greens_function()
 
     @functools.lru_cache(maxsize=None)
     def _rotated_moment(self, i: int, j: int, k: int, jk: int) -> Array:  # noqa: D417
