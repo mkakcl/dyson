@@ -368,6 +368,15 @@ def project_eigenvectors(
     return eigvecs
 
 
+class NotPositiveSemiDefiniteError(ValueError):
+    """A fractional power was requested of a matrix that is not positive semi-definite.
+
+    Subclasses :cls:`ValueError` so that existing handling is unaffected, while letting a caller
+    that can respond to the condition -- by reducing to an order the input does supports -- catch
+    it without also swallowing unrelated errors.
+    """
+
+
 @dataclasses.dataclass(frozen=True)
 class MatrixPowerInfo:
     """Diagnostics for a matrix power computed by eigenvalue decomposition.
@@ -473,7 +482,8 @@ def matrix_power_with_info(
         The matrix raised to the power, and the diagnostics.
 
     Raises:
-        ValueError: If ``strict`` and a fractional power of a real Hermitian matrix is
+        NotPositiveSemiDefiniteError: If ``strict`` and a fractional power of a real Hermitian
+            matrix is
             requested while an eigenvalue is materially negative, meaning the input is not
             positive semi-definite to within rounding. Such a direction has no real root, and
             discarding it silently reports a small error for a result that is simply wrong.
@@ -525,7 +535,7 @@ def matrix_power_with_info(
                 "The input is not positive semi-definite."
             )
             if strict:
-                raise ValueError(message)
+                raise NotPositiveSemiDefiniteError(message)
             warnings.warn(
                 f"{message} Discarding the direction, which is what previous versions did "
                 "silently. Pass strict=True to refuse instead.",

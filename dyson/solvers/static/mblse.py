@@ -174,7 +174,8 @@ class MBLSE(BaseMBL):
         # Print the input information
         console.print(f"Number of physical states: [input]{self.nphys}[/input]")
         console.print(f"Number of moments: [input]{self.moments.shape[0]}[/input]")
-        if self.overlap is not None:
+        # As above, the condition number costs a decomposition and is diagnostic only.
+        if self.overlap is not None and self.calculate_errors:
             cond = printing.format_float(
                 np.linalg.cond(self.overlap), threshold=1e10, scientific=True, precision=4
             )
@@ -247,7 +248,11 @@ class MBLSE(BaseMBL):
         error_inv_sqrt: float | None = None
         if self.calculate_errors:
             _, error_inv_sqrt = util.matrix_power(
-                self.moments[0], -0.5, hermitian=self.hermitian, return_error=True
+                self.moments[0],
+                -0.5,
+                hermitian=self.hermitian,
+                return_error=True,
+                strict=True,
             )
 
         # Initialise the coefficients
@@ -256,7 +261,11 @@ class MBLSE(BaseMBL):
 
         # Initialise the blocks
         self.off_diagonal[0], error_sqrt = util.matrix_power(
-            self.moments[0], 0.5, hermitian=self.hermitian, return_error=self.calculate_errors
+            self.moments[0],
+            0.5,
+            hermitian=self.hermitian,
+            return_error=self.calculate_errors,
+            strict=True,
         )
         self.on_diagonal[0] = self.static
         self.on_diagonal[1] = self.coefficients[1, 1, 1]
@@ -287,7 +296,11 @@ class MBLSE(BaseMBL):
 
         # Get the off-diagonal block
         off_diagonal[i], error_sqrt = util.matrix_power(
-            off_diagonal_squared, 0.5, hermitian=self.hermitian, return_error=self.calculate_errors
+            off_diagonal_squared,
+            0.5,
+            hermitian=self.hermitian,
+            return_error=self.calculate_errors,
+            strict=True,
         )
 
         # Invert the off-diagonal block
@@ -351,7 +364,11 @@ class MBLSE(BaseMBL):
 
         # Get the off-diagonal block
         off_diagonal[i], error_sqrt = util.matrix_power(
-            off_diagonal_squared, 0.5, hermitian=self.hermitian, return_error=self.calculate_errors
+            off_diagonal_squared,
+            0.5,
+            hermitian=self.hermitian,
+            return_error=self.calculate_errors,
+            strict=True,
         )
 
         # Invert the off-diagonal block

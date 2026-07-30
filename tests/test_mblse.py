@@ -42,12 +42,18 @@ def test_central_moments(
     solver.kernel()
     assert solver.result is not None
 
+    # The solver conserves what it says it conserves. Where the recurrence cannot support the
+    # requested order it steps down and says so, and only the realized moments are constrained.
+    assert solver.max_cycle_achieved is not None
+    realized = solver.nmom_conserved(solver.max_cycle_achieved)
+    assert realized <= nmom_se
+
     # Recover the moments
     static_recovered = solver.result.get_static_self_energy()
     self_energy = solver.result.get_self_energy()
 
     assert helper.are_equal_arrays(static, static_recovered)
-    assert helper.have_equal_moments(se_moments, self_energy, nmom_se)
+    assert helper.have_equal_moments(se_moments[:realized], self_energy, realized)
 
 
 @pytest.mark.parametrize("max_cycle", [0, 1, 2, 3])
@@ -104,6 +110,15 @@ def test_vs_exact_solver_central(
         hermitian=hermitian,
     )
     result_p = mblse_p.kernel()
+
+    # Where the recurrence could not support the requested order it stepped down and said so.
+    # Only the moments both solvers actually realized are constrained.
+    assert mblse_h.max_cycle_achieved is not None
+    assert mblse_p.max_cycle_achieved is not None
+    nmom_se = min(
+        mblse_h.nmom_conserved(mblse_h.max_cycle_achieved),
+        mblse_p.nmom_conserved(mblse_p.max_cycle_achieved),
+    )
 
     # Combine for Green's function
     result_ph = Spectral.combine_for_greens_function(result_h, result_p, overlap=overlap)

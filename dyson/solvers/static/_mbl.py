@@ -260,6 +260,11 @@ class BaseMBL(StaticSolver):
     #: moments are always compared in the same representation.
     moment_reduction: Reduction = Reduction.NONE
 
+    #: The highest iteration the recurrence actually completed. Equal to :attr:`max_cycle`
+    #: unless the input could not support the requested order, in which case the recurrence
+    #: stopped early and this records where.
+    max_cycle_achieved: int | None = None
+
     def __post_kernel__(self) -> None:
         """Hook called after :meth:`kernel`."""
         assert self.result is not None
@@ -269,8 +274,13 @@ class BaseMBL(StaticSolver):
             f"Found [output]{self.result.neig}[/output] roots between [output]{emin}[/output] and "
             f"[output]{emax}[/output]."
         )
+        if self.max_cycle_achieved is not None and self.max_cycle_achieved != self.max_cycle:
+            console.print(
+                f"Moment orders: requested [input]{self.nmom_conserved(self.max_cycle)}[/input], "
+                f"realized [output]{self.nmom_conserved(self.max_cycle_achieved)}[/output]."
+            )
         if self.calculate_errors:
-            errors = self.moment_errors(iteration=self.max_cycle)
+            errors = self.moment_errors(iteration=self.max_cycle_achieved)
             total = printing.format_float(
                 errors.total, threshold=1e-10, scientific=True, precision=4
             )
@@ -278,6 +288,68 @@ class BaseMBL(StaticSolver):
                 f"Error in the moments: {total} (over {len(errors.orders)} conserved orders)"
             )
             errors.print()
+
+    def validate_moments(self) -> None:
+        """Check that the supplied moments can define a measure before the recurrence starts.
+
+        Raises:
+            ValueError: If the moments are not finite, are not Hermitian when the solver has been
+                told they are, or if the zeroth moment is not positive semi-definite. The zeroth
+                moment is a sum of outer products of couplings, so a negative direction in it is
+                negative spectral weight: the input does not describe a measure and no amount of
+                recurrence will make it one.
+        """
+        moments = np.asarray(self.moments)
+
+        if not np.all(np.isfinite(moments)):
+            bad = int(np.count_nonzero(~np.isfinite(moments)))
+            raise ValueError(
+                f"Moments contain {bad} non-finite element(s). The recurrence cannot start."
+            )
+
+        if self.hermitian and moments.ndim == 3:
+            asymmetry = max(
+                float(np.max(np.abs(moment - moment.T.conj()))) if moment.size else 0.0
+                for moment in moments
+            )
+            scale = float(np.max(np.abs(moments))) if moments.size else 0.0
+            if asymmetry > 1e-10 + 1e-8 * scale:
+                raise ValueError(
+                    f"Moments are not Hermitian to within tolerance: the largest deviation from "
+                    f"the Hermitian conjugate is {asymmetry:.6e} against a largest element of "
+                    f"{scale:.6e}. Pass hermitian=False if this is intended."
+                )
+
+        # The zeroth moment carries the total spectral weight and must be positive semi-definite.
+        zeroth = np.atleast_2d(moments[0])
+        if self.hermitian and not np.iscomplexobj(zeroth):
+            eigvals = np.real(np.linalg.eigvalsh(zeroth))
+            scale = float(np.max(np.abs(eigvals))) if eigvals.size else 0.0
+            worst = float(np.min(eigvals)) if eigvals.size else 0.0
+            if worst < -(1e-10 + 1e-8 * scale):
+                raise ValueError(
+                    f"The zeroth moment is not positive semi-definite: its smallest eigenvalue is "
+                    f"{worst:.6e} against a largest of {scale:.6e}. This is negative spectral "
+                    "weight in the input, not an artefact of the recurrence."
+                )
+
+    def report_moment_usage(self) -> None:
+        """Report how many of the supplied moments the requested order actually consumes.
+
+        The recurrence consumes ``2 * max_cycle + 2`` moments, so an odd number of supplied
+        moments always leaves one unused. Saying so is the alternative to requiring a particular
+        parity: the caller learns exactly which moments were used rather than silently losing one.
+        """
+        supplied = int(np.shape(self.moments)[0])
+        used = self.nmom_conserved(self.max_cycle)
+        if used == supplied:
+            return
+        console.print(
+            f"Using [output]{used}[/output] of [input]{supplied}[/input] supplied moments "
+            f"(orders 0-{used - 1}); the recurrence consumes 2 * max_cycle + 2 and the "
+            f"remaining {supplied - used} cannot be constrained at max_cycle="
+            f"[input]{self.max_cycle}[/input]."
+        )
 
     @abstractmethod
     def solve(self, iteration: int | None = None) -> Spectral:
@@ -297,6 +369,10 @@ class BaseMBL(StaticSolver):
         Returns:
             The eigenvalues and eigenvectors of the self-energy supermatrix.
         """
+        # Refuse input that cannot describe a measure before doing any work on it
+        self.validate_moments()
+        self.report_moment_usage()
+
         # Get the table
         table = printing.ConvergencePrinter(
             (), ("Error in moments", "Error in sqrt", "Error in inv. sqrt"), (1e-10, 1e-10, 1e-10)
@@ -305,30 +381,52 @@ class BaseMBL(StaticSolver):
         progress.start()
 
         # Run the solver
+        self.max_cycle_achieved = self.max_cycle
         for iteration in range(self.max_cycle + 1):  # TODO: check
-            error_sqrt, error_inv_sqrt, error_moments = self.recurrence_iteration(iteration)
+            try:
+                error_sqrt, error_inv_sqrt, error_moments = self.recurrence_iteration(iteration)
+            except util.NotPositiveSemiDefiniteError as error:
+                # The block this iteration would add has no real square root, so the requested
+                # order is not supportable by these moments. Everything through the previous
+                # iteration is complete and untouched, so step down to it rather than either
+                # failing outright or silently discarding the offending direction.
+                if iteration == 0:
+                    raise
+                self.max_cycle_achieved = iteration - 1
+                progress.stop()
+                table.print()
+                console.print(
+                    f"[bad]Requested order {self.max_cycle} is not realizable[/bad]: iteration "
+                    f"{iteration} produced an off-diagonal square that is not positive "
+                    f"semi-definite. Stepping down to order "
+                    f"[output]{self.max_cycle_achieved}[/output], conserving "
+                    f"[output]{self.nmom_conserved(self.max_cycle_achieved)}[/output] of the "
+                    f"{self.nmom_conserved(self.max_cycle)} moments requested."
+                )
+                console.print(f"Cause: {error}")
+                break
             if not self.calculate_errors:
                 error_sqrt = error_inv_sqrt = error_moments = np.nan
             table.add_row(iteration, (), (error_moments, error_sqrt, error_inv_sqrt))
             progress.update(iteration)
-
-        progress.stop()
-        table.print()
+        else:
+            progress.stop()
+            table.print()
 
         # Diagonalise the compressed self-energy
-        self.result = self.solve(iteration=self.max_cycle)
+        self.result = self.solve(iteration=self.max_cycle_achieved)
 
         return self.result
 
     @functools.cached_property
     def orthogonalisation_metric(self) -> Array:
         """Get the orthogonalisation metric."""
-        return util.matrix_power(self.moments[0], -0.5, hermitian=self.hermitian)[0]
+        return util.matrix_power(self.moments[0], -0.5, hermitian=self.hermitian, strict=True)[0]
 
     @functools.cached_property
     def orthogonalisation_metric_inv(self) -> Array:
         """Get the inverse of the orthogonalisation metric."""
-        return util.matrix_power(self.moments[0], 0.5, hermitian=self.hermitian)[0]
+        return util.matrix_power(self.moments[0], 0.5, hermitian=self.hermitian, strict=True)[0]
 
     @functools.lru_cache(maxsize=64)
     def orthogonalised_moment(self, order: int) -> Array:
@@ -409,7 +507,9 @@ class BaseMBL(StaticSolver):
                 report a small error over a subset of the moments.
         """
         if iteration is None:
-            iteration = self.max_cycle
+            iteration = (
+                self.max_cycle if self.max_cycle_achieved is None else self.max_cycle_achieved
+            )
 
         representation = self.reconstruct_representation(iteration)
         orders = range(self.nmom_conserved(iteration))
