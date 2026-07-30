@@ -39,6 +39,13 @@ def test_central_moments(
     solver.kernel()
     assert solver.result is not None
 
+    # The solver conserves what it says it conserves; an unsupportable order steps down.
+    assert solver.max_cycle_achieved is not None
+    realized = solver.nmom_conserved(solver.max_cycle_achieved)
+    assert realized <= nmom_gf
+    nmom_gf = realized
+    nmom_se = realized - 2
+
     # Recover the Green's function and self-energy
     static = solver.result.get_static_self_energy()
     self_energy = solver.result.get_self_energy()
@@ -100,6 +107,15 @@ def test_vs_exact_solver_central(
     mblgf_p.kernel()
     assert mblgf_h.result is not None
     assert mblgf_p.result is not None
+
+    # Where the recurrence could not support the requested order it stepped down and said so.
+    # Only the moments both solvers actually realized are constrained.
+    assert mblgf_h.max_cycle_achieved is not None
+    assert mblgf_p.max_cycle_achieved is not None
+    nmom_gf = min(
+        mblgf_h.nmom_conserved(mblgf_h.max_cycle_achieved),
+        mblgf_p.nmom_conserved(mblgf_p.max_cycle_achieved),
+    )
     result_ph = Spectral.combine_for_greens_function(mblgf_h.result, mblgf_p.result)
 
     assert helper.have_equal_moments(

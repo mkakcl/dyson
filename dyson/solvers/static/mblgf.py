@@ -123,13 +123,15 @@ class MBLGF(BaseMBL):
         if _infer_max_cycle(self.moments) < self.max_cycle:
             raise ValueError("not enough moments provided for the specified max_cycle.")
 
-        # Print the input information
-        cond = printing.format_float(
-            np.linalg.cond(self.moments[0]), threshold=1e10, scientific=True, precision=4
-        )
+        # Print the input information. The condition number is a diagnostic and costs a
+        # singular value decomposition, so it is only formed when errors are being reported.
         console.print(f"Number of physical states: [input]{self.nphys}[/input]")
         console.print(f"Number of moments: [input]{self.moments.shape[0]}[/input]")
-        console.print(f"Overlap condition number: {cond}")
+        if self.calculate_errors:
+            cond = printing.format_float(
+                np.linalg.cond(self.moments[0]), threshold=1e10, scientific=True, precision=4
+            )
+            console.print(f"Overlap condition number: {cond}")
 
     @classmethod
     def from_self_energy(
@@ -223,7 +225,11 @@ class MBLGF(BaseMBL):
         error_inv_sqrt: float | None = None
         if self.calculate_errors:
             _, error_inv_sqrt = util.matrix_power(
-                self.moments[0], -0.5, hermitian=self.hermitian, return_error=True
+                self.moments[0],
+                -0.5,
+                hermitian=self.hermitian,
+                return_error=True,
+                strict=True,
             )
 
         # Initialise the blocks
@@ -266,7 +272,11 @@ class MBLGF(BaseMBL):
 
         # Get the off-diagonal block
         off_diagonal[i], error_sqrt = util.matrix_power(
-            off_diagonal_squared, 0.5, hermitian=self.hermitian, return_error=self.calculate_errors
+            off_diagonal_squared,
+            0.5,
+            hermitian=self.hermitian,
+            return_error=self.calculate_errors,
+            strict=True,
         )
 
         # Invert the off-diagonal block
