@@ -253,6 +253,7 @@ class MBLSE(BaseMBL):
                 hermitian=self.hermitian,
                 return_error=True,
                 strict=True,
+                **self.matrix_power_options,
             )
 
         # Initialise the coefficients
@@ -266,6 +267,7 @@ class MBLSE(BaseMBL):
             hermitian=self.hermitian,
             return_error=self.calculate_errors,
             strict=True,
+            **self.matrix_power_options,
         )
         self.on_diagonal[0] = self.static
         self.on_diagonal[1] = self.coefficients[1, 1, 1]
@@ -301,6 +303,7 @@ class MBLSE(BaseMBL):
             hermitian=self.hermitian,
             return_error=self.calculate_errors,
             strict=True,
+            **self.matrix_power_options,
         )
 
         # Invert the off-diagonal block
@@ -309,6 +312,7 @@ class MBLSE(BaseMBL):
             -0.5,
             hermitian=self.hermitian,
             return_error=self.calculate_errors,
+            **self.matrix_power_options,
         )
 
         # Update the dtype
@@ -369,11 +373,16 @@ class MBLSE(BaseMBL):
             hermitian=self.hermitian,
             return_error=self.calculate_errors,
             strict=True,
+            **self.matrix_power_options,
         )
 
         # Invert the off-diagonal block
         off_diagonal_inv, error_inv_sqrt = util.matrix_power(
-            off_diagonal_squared, -0.5, hermitian=self.hermitian, return_error=self.calculate_errors
+            off_diagonal_squared,
+            -0.5,
+            hermitian=self.hermitian,
+            return_error=self.calculate_errors,
+            **self.matrix_power_options,
         )
 
         # Update the dtype
