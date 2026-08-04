@@ -284,6 +284,10 @@ class BaseMBL(StaticSolver):
     #: stopped early and this records where.
     max_cycle_achieved: int | None = None
 
+    #: Memoised :meth:`solve` results, keyed by iteration. Reset by :meth:`kernel`, since a
+    #: second run rebuilds the recurrence and invalidates everything solved from the first.
+    _solved: dict[int, Spectral] | None = None
+
     def __post_kernel__(self) -> None:
         """Hook called after :meth:`kernel`."""
         assert self.result is not None
@@ -370,9 +374,40 @@ class BaseMBL(StaticSolver):
             f"[input]{self.max_cycle}[/input]."
         )
 
-    @abstractmethod
     def solve(self, iteration: int | None = None) -> Spectral:
         """Solve the eigenvalue problem at a given iteration.
+
+        The result for a given iteration is fixed once that iteration has completed: the
+        recurrence only ever appends blocks, so nothing a later iteration does can change
+        it. It is asked for repeatedly -- once by the error diagnostics as the recurrence
+        passes through, once by :meth:`kernel` to set :attr:`result`, and again by anything
+        reading the errors afterwards -- and each solve is two eigendecompositions. They are
+        memoised here rather than repeated.
+
+        Args:
+            iteration: The iteration to get the results for.
+
+        Returns:
+            The :cls:`Spectral` object.
+        """
+        if iteration is None:
+            iteration = self.max_cycle
+
+        if iteration == self.max_cycle and self.result is not None:
+            return self.result
+
+        if self._solved is None:
+            self._solved = {}
+        elif iteration in self._solved:
+            return self._solved[iteration]
+
+        solved = self._solve(iteration)
+        self._solved[iteration] = solved
+        return solved
+
+    @abstractmethod
+    def _solve(self, iteration: int) -> Spectral:
+        """Solve the eigenvalue problem at a given iteration, without the cache.
 
         Args:
             iteration: The iteration to get the results for.
@@ -388,6 +423,10 @@ class BaseMBL(StaticSolver):
         Returns:
             The eigenvalues and eigenvectors of the self-energy supermatrix.
         """
+        # Anything solved by a previous run describes a recurrence this one is about to
+        # rebuild, so it cannot be reused
+        self._solved = None
+
         # Refuse input that cannot describe a measure before doing any work on it
         self.validate_moments()
         self.report_moment_usage()
