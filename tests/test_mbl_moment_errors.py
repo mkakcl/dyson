@@ -202,3 +202,65 @@ class TestChempotShift:
         assert errors.shifted.orders == errors.orders
         # The reconstruction is still exact, so shifting both sides keeps it exact.
         assert errors.shifted.max_relative_frobenius < 1e-10
+
+
+class TestSolveIsMemoised:
+    """A solved iteration is not solved again.
+
+    Each solve is two eigendecompositions, and the diagnostics ask for the same iteration
+    that :meth:`kernel` and any later reader of the errors ask for.
+    """
+
+    @staticmethod
+    def _counted(solver: MBLSE) -> list[int]:
+        """Replace the uncached solve with one that records how often it runs."""
+        calls: list[int] = []
+        original = type(solver)._solve
+
+        def counting(self: MBLSE, iteration: int) -> object:
+            calls.append(iteration)
+            return original(self, iteration)
+
+        solver._solve = counting.__get__(solver, type(solver))  # type: ignore[method-assign]
+        return calls
+
+    def test_repeated_requests_solve_once(self) -> None:
+        """Asking for the same iteration twice runs the eigendecompositions once."""
+        solver = _solver(2)  # built with calculate_errors=False, so nothing is cached yet
+        calls = self._counted(solver)
+
+        first = solver.solve(iteration=1)
+        second = solver.solve(iteration=1)
+
+        assert second is first
+        assert calls == [1]
+
+    def test_the_diagnostics_populate_the_cache(self) -> None:
+        """With errors on, the recurrence has already solved the iterations it reports."""
+        static, self_energy = _self_energy()
+        solver = MBLSE(static, self_energy.moments(range(6)), max_cycle=2)
+        solver.kernel()
+        calls = self._counted(solver)
+
+        solver.moment_errors(iteration=1)
+
+        assert calls == []
+
+    def test_the_recurrence_does_not_resolve_its_own_iterations(self) -> None:
+        """Over a whole kernel, no iteration is solved more than once."""
+        solver = MBLSE(*_self_energy()[:1], _self_energy()[1].moments(range(6)), max_cycle=2)
+        calls = self._counted(solver)
+
+        solver.kernel()
+
+        assert len(calls) == len(set(calls)), f"an iteration was solved twice: {calls}"
+
+    def test_kernel_invalidates_the_cache(self) -> None:
+        """A second run rebuilds the recurrence, so nothing from the first may be reused."""
+        solver = _solver(2)
+        solver.kernel()
+        stale = solver.solve(iteration=1)
+
+        solver.kernel()
+
+        assert solver.solve(iteration=1) is not stale

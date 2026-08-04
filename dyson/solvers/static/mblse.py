@@ -423,9 +423,8 @@ class MBLSE(BaseMBL):
 
         return error_sqrt, error_inv_sqrt, error_moments
 
-    # FIXME: being called twice?
-    def solve(self, iteration: int | None = None) -> Spectral:
-        """Solve the eigenvalue problem at a given iteration.
+    def _solve(self, iteration: int) -> Spectral:
+        """Solve the eigenvalue problem at a given iteration, without the cache.
 
         Args:
             iteration: The iteration to get the results for.
@@ -433,14 +432,6 @@ class MBLSE(BaseMBL):
         Returns:
             The :cls:`Spectral` object.
         """
-        # TODO inherit
-        if iteration is None:
-            iteration = self.max_cycle
-
-        # Check if we're just returning the result
-        if iteration == self.max_cycle and self.result is not None:
-            return self.result
-
         # Get the supermatrix
         on_diag = [self.on_diagonal[i] for i in range(iteration + 2)]
         off_diag_upper = [self.off_diagonal[i] for i in range(iteration + 1)]

@@ -412,8 +412,8 @@ class MBLGF(BaseMBL):
 
         return error_sqrt, error_inv_sqrt, error_moments
 
-    def solve(self, iteration: int | None = None) -> Spectral:
-        """Solve the eigenvalue problem at a given iteration.
+    def _solve(self, iteration: int) -> Spectral:
+        """Solve the eigenvalue problem at a given iteration, without the cache.
 
         Args:
             iteration: The iteration to get the results for.
@@ -421,13 +421,6 @@ class MBLGF(BaseMBL):
         Returns:
             The :class:`~dyson.representations.spectral.Spectral` object.
         """
-        if iteration is None:
-            iteration = self.max_cycle
-
-        # Check if we're just returning the result
-        if iteration == self.max_cycle and self.result is not None:
-            return self.result
-
         # Diagonalise the block tridiagonal Hamiltonian
         on_diag = [self.on_diagonal[i] for i in range(iteration + 1)]
         off_diag_upper = [self.off_diagonal_upper[i] for i in range(iteration)]
