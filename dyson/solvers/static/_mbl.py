@@ -254,7 +254,26 @@ class BaseMBL(StaticSolver):
     hermitian: bool = True
     force_orthogonality: bool = True
     calculate_errors: bool = True
-    _options: set[str] = {"max_cycle", "hermitian", "force_orthogonality", "calculate_errors"}
+
+    #: Tolerances governing the effective support and the treatment of negative eigenvalues in
+    #: every matrix power the recurrence takes. ``None`` means the corresponding default of
+    #: :func:`~dyson.util.linalg.matrix_power` applies, so that the library keeps one definition
+    #: of each default and an unset solver inherits it rather than restating it.
+    atol: float | None = None
+    rtol: float | None = None
+    neg_atol: float | None = None
+    neg_rtol: float | None = None
+
+    _options: set[str] = {
+        "max_cycle",
+        "hermitian",
+        "force_orthogonality",
+        "calculate_errors",
+        "atol",
+        "rtol",
+        "neg_atol",
+        "neg_rtol",
+    }
 
     #: The reduction the solver's moments are expressed in, so that reconstructed and reference
     #: moments are always compared in the same representation.
@@ -418,15 +437,42 @@ class BaseMBL(StaticSolver):
 
         return self.result
 
+    @property
+    def matrix_power_options(self) -> dict[str, float]:
+        """Get the support and negativity tolerances for the matrix powers in the recurrence.
+
+        Only tolerances that have actually been set are returned. An unset solver therefore
+        inherits the defaults of :func:`~dyson.util.linalg.matrix_power` rather than a copy of
+        them taken here, which is what keeps a caller that sets nothing bit-identical to one
+        written before these options existed.
+
+        Returns:
+            Keyword arguments to forward to :func:`~dyson.util.linalg.matrix_power`.
+        """
+        names = ("atol", "rtol", "neg_atol", "neg_rtol")
+        return {name: getattr(self, name) for name in names if getattr(self, name) is not None}
+
     @functools.cached_property
     def orthogonalisation_metric(self) -> Array:
         """Get the orthogonalisation metric."""
-        return util.matrix_power(self.moments[0], -0.5, hermitian=self.hermitian, strict=True)[0]
+        return util.matrix_power(
+            self.moments[0],
+            -0.5,
+            hermitian=self.hermitian,
+            strict=True,
+            **self.matrix_power_options,
+        )[0]
 
     @functools.cached_property
     def orthogonalisation_metric_inv(self) -> Array:
         """Get the inverse of the orthogonalisation metric."""
-        return util.matrix_power(self.moments[0], 0.5, hermitian=self.hermitian, strict=True)[0]
+        return util.matrix_power(
+            self.moments[0],
+            0.5,
+            hermitian=self.hermitian,
+            strict=True,
+            **self.matrix_power_options,
+        )[0]
 
     @functools.lru_cache(maxsize=64)
     def orthogonalised_moment(self, order: int) -> Array:

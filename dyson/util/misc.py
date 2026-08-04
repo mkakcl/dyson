@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+import inspect
 import warnings
 import weakref
 from contextlib import contextmanager
@@ -37,16 +38,24 @@ def catch_warnings(warning_type: type[Warning] = Warning) -> Iterator[list[Warni
 def cache_by_id(func: Callable) -> Callable:
     """Decorator to cache function results based on the ``id`` of the arguments.
 
+    The key is built from the arguments the function actually receives, with defaults filled
+    in, rather than from the ones the caller happened to write out. A call that states a
+    default explicitly therefore shares an entry with one that leaves it out, which is what
+    makes the cache a property of the computation rather than of how it was spelled: without
+    this, widening a signature or passing a default through a wrapper silently repartitions
+    the cache and changes which results are reused.
+
     Args:
         func: The function to cache.
 
     Returns:
         A wrapper function that caches results based on the id of the arguments.
     """
-    cache: dict[tuple[tuple[int, ...], tuple[tuple[str, int], ...]], Any] = {}
-    watchers: dict[tuple[tuple[int, ...], tuple[tuple[str, int], ...]], list[weakref.ref]] = {}
+    cache: dict[tuple[tuple[str, int], ...], Any] = {}
+    watchers: dict[tuple[tuple[str, int], ...], list[weakref.ref]] = {}
+    signature = inspect.signature(func)
 
-    def _remove(key: tuple[tuple[int, ...], tuple[tuple[str, int], ...]]) -> None:
+    def _remove(key: tuple[tuple[str, int], ...]) -> None:
         """Remove an entry from the cache."""
         cache.pop(key, None)
         watchers.pop(key, None)
@@ -54,9 +63,9 @@ def cache_by_id(func: Callable) -> Callable:
     @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         """Cache results based on the id of the arguments."""
-        key_args = tuple(id(arg) for arg in args)
-        key_kwargs = tuple(sorted((k, id(v)) for k, v in kwargs.items()))
-        key = (key_args, key_kwargs)
+        bound = signature.bind(*args, **kwargs)
+        bound.apply_defaults()
+        key = tuple((name, id(value)) for name, value in bound.arguments.items())
         if key in cache:
             return cache[key]
 
@@ -64,7 +73,7 @@ def cache_by_id(func: Callable) -> Callable:
         cache[key] = result
 
         refs: list[weakref.ref] = []
-        for obj in [*args, *kwargs.values()]:
+        for obj in bound.arguments.values():
             try:
                 refs.append(weakref.ref(obj, lambda _ref, k=key: _remove(k)))  # type: ignore[misc]
             except TypeError:

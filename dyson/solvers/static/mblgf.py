@@ -230,6 +230,7 @@ class MBLGF(BaseMBL):
                 hermitian=self.hermitian,
                 return_error=True,
                 strict=True,
+                **self.matrix_power_options,
             )
 
         # Initialise the blocks
@@ -277,11 +278,16 @@ class MBLGF(BaseMBL):
             hermitian=self.hermitian,
             return_error=self.calculate_errors,
             strict=True,
+            **self.matrix_power_options,
         )
 
         # Invert the off-diagonal block
         off_diagonal_inv, error_inv_sqrt = util.matrix_power(
-            off_diagonal_squared, -0.5, hermitian=self.hermitian, return_error=self.calculate_errors
+            off_diagonal_squared,
+            -0.5,
+            hermitian=self.hermitian,
+            return_error=self.calculate_errors,
+            **self.matrix_power_options,
         )
 
         # Update the dtype
@@ -343,12 +349,14 @@ class MBLGF(BaseMBL):
             0.5,
             hermitian=self.hermitian,
             return_error=self.calculate_errors,
+            **self.matrix_power_options,
         )
         off_diagonal_lower[i], error_sqrt_lower = util.matrix_power(
             off_diagonal_lower_squared,
             0.5,
             hermitian=self.hermitian,
             return_error=self.calculate_errors,
+            **self.matrix_power_options,
         )
         error_sqrt: float | None = None
         if self.calculate_errors:
@@ -361,12 +369,14 @@ class MBLGF(BaseMBL):
             -0.5,
             hermitian=self.hermitian,
             return_error=self.calculate_errors,
+            **self.matrix_power_options,
         )
         off_diagonal_lower_inv, error_inv_sqrt_lower = util.matrix_power(
             off_diagonal_lower_squared,
             -0.5,
             hermitian=self.hermitian,
             return_error=self.calculate_errors,
+            **self.matrix_power_options,
         )
         error_inv_sqrt: float | None = None
         if self.calculate_errors:

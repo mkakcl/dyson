@@ -29,6 +29,20 @@ AVOID_SCIPY_EIG: bool = True
 """Default biorthonormalisation method."""
 BIORTH_METHOD: Literal["lu", "eig", "eig-balanced"] = "lu"
 
+"""Default absolute part of the effective-support cutoff used by the matrix powers.
+
+Named rather than repeated as a literal so that :func:`matrix_power` and
+:func:`matrix_power_with_info` cannot drift apart, and so a caller that wants to state the
+policy it is relying on has something to state it against.
+"""
+MATRIX_POWER_ATOL: float = 1e-10
+
+"""Default relative part of the effective-support cutoff, scaled by the largest eigenvalue."""
+MATRIX_POWER_RTOL: float = 1e-12
+
+"""Default relative part of the tolerance on negative eigenvalues, scaled by the largest."""
+MATRIX_POWER_NEG_RTOL: float = 1e-8
+
 
 def is_orthonormal(vectors_left: Array, vectors_right: Array | None = None) -> bool:
     """Check if a set of vectors is orthonormal.
@@ -428,11 +442,11 @@ def matrix_power_with_info(
     power: int | float,
     hermitian: bool = True,
     *,
-    atol: float = 1e-10,
-    rtol: float = 1e-12,
+    atol: float = MATRIX_POWER_ATOL,
+    rtol: float = MATRIX_POWER_RTOL,
     threshold: float | None = None,
     neg_atol: float | None = None,
-    neg_rtol: float = 1e-8,
+    neg_rtol: float = MATRIX_POWER_NEG_RTOL,
     strict: bool = False,
     shared_support: bool = False,
     ord: int | float = np.inf,
@@ -593,7 +607,11 @@ def matrix_power(
     power: int | float,
     hermitian: bool = True,
     *,
+    atol: float = MATRIX_POWER_ATOL,
+    rtol: float = MATRIX_POWER_RTOL,
     threshold: float | None = None,
+    neg_atol: float | None = None,
+    neg_rtol: float = MATRIX_POWER_NEG_RTOL,
     return_error: bool = False,
     strict: bool = False,
     ord: int | float = np.inf,
@@ -604,7 +622,12 @@ def matrix_power(
         matrix: The matrix to be exponentiated.
         power: The power to which the matrix is to be raised.
         hermitian: Whether the matrix is hermitian.
+        atol: Absolute part of the support cutoff.
+        rtol: Relative part of the support cutoff, scaled by the largest eigenvalue magnitude.
         threshold: If given, an absolute cutoff used in place of the scale-aware default.
+        neg_atol: Absolute part of the tolerance on negative eigenvalues. Defaults to ``atol``.
+        neg_rtol: Relative part of the tolerance on negative eigenvalues, scaled by the largest
+            eigenvalue magnitude.
         return_error: Whether to return the error in the power.
         strict: Whether a materially negative eigenvalue is an error rather than a warning.
         ord: The order of the norm to be used for the error.
@@ -613,9 +636,23 @@ def matrix_power(
         The matrix raised to the power, and, if requested, the norm of the discarded
         contribution to that power. Use :func:`matrix_power_with_info` for the full diagnostics,
         including the effective rank, the condition estimate and the discarded input norm.
+
+    Notes:
+        The support and negative-eigenvalue tolerances are forwarded rather than fixed here, so
+        that a caller which has an error budget can state the policy it is relying on instead of
+        inheriting whichever defaults the library happens to carry.
     """
     result, info = matrix_power_with_info(
-        matrix, power, hermitian=hermitian, threshold=threshold, strict=strict, ord=ord
+        matrix,
+        power,
+        hermitian=hermitian,
+        atol=atol,
+        rtol=rtol,
+        threshold=threshold,
+        neg_atol=neg_atol,
+        neg_rtol=neg_rtol,
+        strict=strict,
+        ord=ord,
     )
     return result, info.error if return_error else None
 
