@@ -356,24 +356,31 @@ class Lehmann(BaseRepresentation):
             squeeze = True
         orders = np.asarray(order)
 
-        # Get the subscript depending on the reduction
-        if Reduction(reduction) == Reduction.NONE:
-            subscript = "pk,qk,nk->npq"
-        elif Reduction(reduction) == Reduction.DIAG:
-            subscript = "pk,pk,nk->np"
-        elif Reduction(reduction) == Reduction.TRACE:
-            subscript = "pk,pk,nk->n"
-        else:
-            Reduction(reduction).raise_invalid_representation()
-
-        # Contract the moments
         left, right = self.unpack_couplings()
-        moments = util.einsum(
-            subscript,
-            right,
-            left.conj(),
-            self.energies[None] ** orders[:, None],
-        )
+        left = left.conj()
+        powers = self.energies[None] ** orders[:, None]
+
+        # The contraction is written below as matrix products rather than as the single
+        # `einsum` this used to be. The sum over `k` appears in all three operands, which
+        # `np.einsum` cannot express as a `tensordot` even with `optimize=True`, so it fell
+        # into the single-threaded C kernel: on a benzene/cc-pVTZ self-energy that was 46%
+        # of the whole Dyson stage, and 20-70x slower than the products below. Scaling one
+        # operand by the pole weights first leaves an ordinary GEMM per order.
+        reduction = Reduction(reduction)
+        if reduction == Reduction.NONE:
+            moments = np.empty(
+                (orders.shape[0], right.shape[0], left.shape[0]),
+                dtype=np.result_type(right, left, powers),
+            )
+            for i, weights in enumerate(powers):
+                moments[i] = (right * weights) @ left.T
+        elif reduction == Reduction.DIAG:
+            moments = powers @ (right * left).T
+        elif reduction == Reduction.TRACE:
+            moments = powers @ (right * left).sum(axis=0)
+        else:
+            reduction.raise_invalid_representation()
+
         if squeeze:
             moments = moments[0]
 
