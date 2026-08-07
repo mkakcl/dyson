@@ -14,7 +14,7 @@ from dyson.representations.enums import Reduction
 from dyson.solvers.solver import StaticSolver
 
 if TYPE_CHECKING:
-    from dyson.representations.lehmann import Lehmann
+    from dyson.representations.lehmann import Lehmann, WeightlessPoles
     from dyson.representations.spectral import Spectral
     from dyson.typing import Array
 
@@ -315,6 +315,28 @@ class BaseMBL(StaticSolver):
             )
             errors.print()
 
+            # The recurrence emits a fixed number of poles. Where the moments support fewer
+            # independent directions than that, the surplus arrive weightless and at
+            # undetermined energies, and moment `n` weights those energies by `e**n`. The
+            # moments above can be conserved perfectly while this is happening, so it is
+            # reported separately rather than folded into them.
+            weightless = self.weightless_poles(iteration=self.max_cycle_achieved)
+            if weightless.count:
+                worst = printing.format_float(
+                    weightless.worst_moment_contribution,
+                    threshold=1e-10,
+                    scientific=True,
+                    precision=4,
+                )
+                console.print(
+                    f"[okay]Poles without resolvable weight:[/okay] "
+                    f"[output]{weightless.count}[/output] of "
+                    f"[output]{weightless.naux}[/output], spread over "
+                    f"[output]{printing.format_float(weightless.energy_spread)}[/output] in "
+                    f"energy. Their energies are not determined by the moments; they "
+                    f"contribute at most {worst} of a conserved moment."
+                )
+
     def validate_moments(self) -> None:
         """Check that the supplied moments can define a measure before the recurrence starts.
 
@@ -579,6 +601,30 @@ class BaseMBL(StaticSolver):
             The reference moments, one for each conserved order.
         """
         return self.moments[: self.nmom_conserved(iteration)]
+
+    def weightless_poles(self, iteration: int | None = None) -> WeightlessPoles:
+        """Get the poles the realization produced but cannot place.
+
+        Args:
+            iteration: The iteration to check. Defaults to the achieved :attr:`max_cycle`.
+
+        Returns:
+            What was found. See :cls:`~dyson.representations.lehmann.WeightlessPoles`.
+
+        Note:
+            The recurrence emits a fixed number of poles, and where the moments support
+            fewer independent directions than that, the surplus arrive with couplings at the
+            level of roundoff and energies taken from a numerically null block. Nothing is
+            wrong with the moments they conserve; what is undetermined is *where* these poles
+            sit, and moment ``n`` weights that by ``e**n``. Reported rather than removed:
+            see the note on :cls:`~dyson.representations.lehmann.WeightlessPoles`.
+        """
+        if iteration is None:
+            iteration = (
+                self.max_cycle if self.max_cycle_achieved is None else self.max_cycle_achieved
+            )
+        representation = self.reconstruct_representation(iteration)
+        return representation.weightless_poles(orders=self.nmom_conserved(iteration))
 
     def moment_errors(self, iteration: int | None = None) -> MomentErrors:
         """Get the per-order moment errors at a given iteration.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, cast
 
@@ -12,6 +13,59 @@ from dyson import util
 from dyson.representations.enums import Reduction
 from dyson.representations.representation import BaseRepresentation
 from dyson.typing import Array
+
+
+@dataclasses.dataclass(frozen=True)
+class WeightlessPoles:
+    r"""Poles carrying no resolvable spectral weight, and what they still contribute.
+
+    A representation can carry poles whose couplings sit at the level of roundoff. They add
+    nothing to the function at any frequency, but they are still *placed* somewhere, and
+    where a realization produces them that placement is the eigenvalue of a numerically null
+    block -- which is to say it is not determined by the data the representation was built
+    from. Moment :math:`n` weights a pole by :math:`\epsilon^n`, so an undetermined energy
+    is harmless at low order and need not stay harmless at high order.
+
+    This records the fact rather than acting on it. Removing such poles is not obviously
+    safe: a genuinely weak feature also has small weight, and deleting a pole perturbs every
+    moment it contributed to.
+
+    Args:
+        count: Number of poles below the weight threshold.
+        naux: Total number of poles.
+        threshold: The weight below which a pole was counted, ``atol + rtol * max |w|``.
+        weight: Total absolute weight carried by the counted poles.
+        weight_max: The largest single pole weight, the scale the threshold is relative to.
+        energy_min: Lowest energy among the counted poles. ``None`` if there are none.
+        energy_max: Highest energy among the counted poles. ``None`` if there are none.
+        moment_contribution: For each order, the Frobenius norm of what the counted poles
+            contribute to that moment, relative to the norm of the moment itself. This is
+            the number that says whether their placement matters: it grows like
+            :math:`\epsilon^n` and is the mechanism by which an undetermined energy becomes
+            a visible error.
+    """
+
+    count: int
+    naux: int
+    threshold: float
+    weight: float
+    weight_max: float
+    energy_min: float | None
+    energy_max: float | None
+    moment_contribution: tuple[float, ...]
+
+    @property
+    def energy_spread(self) -> float:
+        """Get the range of energies the counted poles are spread over."""
+        if self.energy_min is None or self.energy_max is None:
+            return 0.0
+        return self.energy_max - self.energy_min
+
+    @property
+    def worst_moment_contribution(self) -> float:
+        """Get the largest relative contribution over the orders examined."""
+        return max(self.moment_contribution, default=0.0)
+
 
 if TYPE_CHECKING:
     from typing import Iterable, Iterator
@@ -387,6 +441,88 @@ class Lehmann(BaseRepresentation):
         return moments
 
     moment = moments
+
+    def weights_per_pole(self) -> Array:
+        r"""Get the spectral weight carried by each pole.
+
+        Returns:
+            The trace of each pole's residue, :math:`\sum_p v_{pk} u_{pk}^*`. These sum to
+            the trace of the zeroth moment.
+        """
+        left, right = self.unpack_couplings()
+        return np.einsum("pk,pk->k", right, left.conj())
+
+    def weightless_poles(
+        self,
+        orders: int | Iterable[int] = 8,
+        atol: float = 0.0,
+        rtol: float = 1e-12,
+    ) -> WeightlessPoles:
+        """Find the poles carrying no resolvable spectral weight.
+
+        Args:
+            orders: The moment orders to measure the contribution over. An integer means
+                ``range(orders)``.
+            atol: Absolute floor on the weight below which a pole is counted.
+            rtol: Weight below which a pole is counted, relative to the largest pole weight.
+
+        Returns:
+            What was found. See :cls:`WeightlessPoles`.
+
+        Note:
+            The threshold is scale-aware rather than absolute, following the same policy as
+            :func:`~dyson.util.linalg.matrix_power`: a fixed cutoff means something different
+            for every system it is applied to.
+        """
+        if isinstance(orders, int):
+            orders = range(orders)
+        orders = tuple(orders)
+
+        weights = np.abs(self.weights_per_pole())
+        weight_max = float(np.max(weights)) if weights.size else 0.0
+        threshold = atol + rtol * weight_max
+        mask = weights < threshold
+
+        count = int(np.count_nonzero(mask))
+        if not count:
+            return WeightlessPoles(
+                count=0,
+                naux=self.naux,
+                threshold=threshold,
+                weight=0.0,
+                weight_max=weight_max,
+                energy_min=None,
+                energy_max=None,
+                moment_contribution=(0.0,) * len(orders),
+            )
+
+        energies = np.real(self.energies[mask])
+        subset = self.__class__(
+            self.energies[mask],
+            self.couplings[..., mask],
+            chempot=self.chempot,
+            sort=False,
+        )
+
+        # What these poles put into each moment, against the moment itself. The ratio is the
+        # whole point: it is flat at low order and grows like `e**n`.
+        full = self.moments(orders)
+        part = subset.moments(orders)
+        contribution = []
+        for whole, piece in zip(full, part):
+            scale = float(np.linalg.norm(whole))
+            contribution.append(float(np.linalg.norm(piece)) / scale if scale else 0.0)
+
+        return WeightlessPoles(
+            count=count,
+            naux=self.naux,
+            threshold=threshold,
+            weight=float(np.sum(weights[mask])),
+            weight_max=weight_max,
+            energy_min=float(np.min(energies)),
+            energy_max=float(np.max(energies)),
+            moment_contribution=tuple(contribution),
+        )
 
     def chebyshev_moments(
         self,
