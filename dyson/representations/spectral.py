@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from functools import cached_property
 from typing import TYPE_CHECKING
 
@@ -12,6 +13,33 @@ from dyson.representations.representation import BaseRepresentation
 
 if TYPE_CHECKING:
     from dyson.typing import Array
+
+
+@dataclasses.dataclass(frozen=True)
+class _SelfEnergySource:
+    r"""The static part and self-energy a :cls:`Spectral` was built from.
+
+    Retained so that the quantities which are simply these inputs back again can be served
+    without diagonalising the supermatrix. Writing :math:`\mathbf{S}` for the physical-space
+    overlap, the eigenvectors that :meth:`Lehmann.diagonalise_matrix` returns satisfy
+
+    .. math::
+        \sum_k \mathbf{x}_k \lambda_k \mathbf{x}_k^\dagger = \begin{bmatrix}
+            \mathbf{f} & \mathbf{v} \\ \mathbf{v}^\dagger & \mathbf{\epsilon}
+        \end{bmatrix},
+
+    exactly the supermatrix they were obtained from, because the orthogonalisation applied
+    to the physical block is undone on the way out. Reconstructing a block of it and
+    diagonalising the result - which is what :meth:`Spectral.get_static_self_energy` and
+    :meth:`Spectral.get_self_energy` do - therefore returns the static part and the
+    auxiliary Lehmann representation this was constructed from, and the zeroth moment of
+    the Dyson orbitals returns the overlap. None of the three needs an eigendecomposition.
+    """
+
+    static: Array
+    self_energy: Lehmann
+    overlap: Array | None
+    sort: bool
 
 
 class Spectral(BaseRepresentation):
@@ -31,6 +59,9 @@ class Spectral(BaseRepresentation):
     the eigenvalue decomposition, where :math:`v` may be an eigenvector acting on the right of a
     matrix, and :math:`u` is an eigenvector acting on the left of a matrix.
     """
+
+    #: Set only by :meth:`from_self_energy`, where the eigendecomposition is deferred.
+    _source: _SelfEnergySource | None = None
 
     def __init__(
         self,
@@ -109,12 +140,37 @@ class Spectral(BaseRepresentation):
         Returns:
             Spectrum object.
         """
-        return cls(
-            *self_energy.diagonalise_matrix(static, overlap=overlap),
-            self_energy.nphys,
-            chempot=self_energy.chempot,
-            sort=sort,
+        spectral = cls.__new__(cls)
+        spectral._source = _SelfEnergySource(static, self_energy, overlap, sort)
+        spectral._eigvals = None
+        spectral._eigvecs = None
+        spectral._nphys = self_energy.nphys
+        spectral.chempot = self_energy.chempot
+        return spectral
+
+    def _diagonalise(self) -> None:
+        """Diagonalise the supermatrix, if it has not been diagonalised already.
+
+        A spectrum built by :meth:`from_self_energy` defers this until an eigenpair is
+        actually wanted, since the static part, the self-energy and the overlap are all
+        available without it. Everything else goes through here.
+        """
+        source = self._source
+        if self._eigvals is not None or source is None:
+            return
+        eigvals, eigvecs = source.self_energy.diagonalise_matrix(
+            source.static, overlap=source.overlap
         )
+        # Deferring construction means deferring its validation too, so run the whole of
+        # `__init__` rather than assigning the two attributes here.
+        self.__init__(  # type: ignore[misc]
+            eigvals, eigvecs, self._nphys, sort=source.sort, chempot=self.chempot
+        )
+
+    @property
+    def diagonalised(self) -> bool:
+        """Whether the supermatrix has been diagonalised."""
+        return self._eigvals is not None
 
     def sort_(self) -> None:
         """Sort the eigenfunctions by eigenvalue.
@@ -148,6 +204,8 @@ class Spectral(BaseRepresentation):
             The static part of the self-energy is defined as the physical space part of the matrix
             from which the spectrum is derived.
         """
+        if self._source is not None and not self.diagonalised:
+            return np.atleast_2d(self._source.static)
         return self._get_matrix_block((slice(self.nphys), slice(self.nphys)))
 
     def get_auxiliaries(self) -> tuple[Array, Array]:
@@ -224,6 +282,8 @@ class Spectral(BaseRepresentation):
             chempot = self.chempot
         if chempot is None:
             chempot = 0.0
+        if self._source is not None and not self.diagonalised:
+            return self._source.self_energy.copy(chempot=chempot)
         return Lehmann(*self.get_auxiliaries(), chempot=chempot)
 
     def get_greens_function(self, chempot: float | None = None) -> Lehmann:
@@ -288,6 +348,10 @@ class Spectral(BaseRepresentation):
     @cached_property
     def overlap(self) -> Array:
         """Get the overlap matrix (the zeroth moment of the Green's function)."""
+        if self._source is not None and not self.diagonalised:
+            if self._source.overlap is not None:
+                return self._source.overlap
+            return np.eye(self.nphys)
         orbitals = self.get_dyson_orbitals()[1]
         left, right = util.unpack_vectors(orbitals)
         return util.einsum("pk,qk->pq", right, left.conj())
@@ -295,11 +359,13 @@ class Spectral(BaseRepresentation):
     @property
     def eigvals(self) -> Array:
         """Get the eigenvalues."""
+        self._diagonalise()
         return self._eigvals
 
     @property
     def eigvecs(self) -> Array:
         """Get the eigenvectors."""
+        self._diagonalise()
         return self._eigvecs
 
     @property
@@ -310,11 +376,30 @@ class Spectral(BaseRepresentation):
     @property
     def neig(self) -> int:
         """Get the number of eigenvalues."""
+        if self._source is not None and not self.diagonalised:
+            return self._nphys + self._source.self_energy.naux
         return self.eigvals.shape[0]
+
+    @cached_property
+    def spectrum(self) -> Array:
+        """Get the eigenvalues, without computing the eigenvectors if they are not needed.
+
+        Note:
+            Where the eigenvectors are already available this is :attr:`eigvals`. Where they are
+            not, this takes the eigenvalues-only route rather than diagonalising, which is
+            markedly cheaper and is enough for reporting the extent of the spectrum.
+        """
+        if self._source is None or self.diagonalised:
+            return self.eigvals
+        return self._source.self_energy.eigenvalues_of_matrix(
+            self._source.static, overlap=self._source.overlap
+        )
 
     @property
     def hermitian(self) -> bool:
         """Check if the spectrum is Hermitian."""
+        if self._source is not None and not self.diagonalised:
+            return self._source.self_energy.hermitian
         return self.eigvecs.ndim == 2
 
     def __eq__(self, other: object) -> bool:

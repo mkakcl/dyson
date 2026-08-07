@@ -356,24 +356,31 @@ class Lehmann(BaseRepresentation):
             squeeze = True
         orders = np.asarray(order)
 
-        # Get the subscript depending on the reduction
-        if Reduction(reduction) == Reduction.NONE:
-            subscript = "pk,qk,nk->npq"
-        elif Reduction(reduction) == Reduction.DIAG:
-            subscript = "pk,pk,nk->np"
-        elif Reduction(reduction) == Reduction.TRACE:
-            subscript = "pk,pk,nk->n"
-        else:
-            Reduction(reduction).raise_invalid_representation()
-
-        # Contract the moments
         left, right = self.unpack_couplings()
-        moments = util.einsum(
-            subscript,
-            right,
-            left.conj(),
-            self.energies[None] ** orders[:, None],
-        )
+        left = left.conj()
+        powers = self.energies[None] ** orders[:, None]
+
+        # The contraction is written below as matrix products rather than as the single
+        # `einsum` this used to be. The sum over `k` appears in all three operands, which
+        # `np.einsum` cannot express as a `tensordot` even with `optimize=True`, so it fell
+        # into the single-threaded C kernel: on a benzene/cc-pVTZ self-energy that was 46%
+        # of the whole Dyson stage, and 20-70x slower than the products below. Scaling one
+        # operand by the pole weights first leaves an ordinary GEMM per order.
+        reduction = Reduction(reduction)
+        if reduction == Reduction.NONE:
+            moments = np.empty(
+                (orders.shape[0], right.shape[0], left.shape[0]),
+                dtype=np.result_type(right, left, powers),
+            )
+            for i, weights in enumerate(powers):
+                moments[i] = (right * weights) @ left.T
+        elif reduction == Reduction.DIAG:
+            moments = powers @ (right * left).T
+        elif reduction == Reduction.TRACE:
+            moments = powers @ (right * left).sum(axis=0)
+        else:
+            reduction.raise_invalid_representation()
+
         if squeeze:
             moments = moments[0]
 
@@ -578,6 +585,61 @@ class Lehmann(BaseRepresentation):
 
         return result
 
+    def _orthogonalised_matrix(
+        self, physical: Array, chempot: bool | float = False, overlap: Array | None = None
+    ) -> tuple[Array, Array | None]:
+        """Build the supermatrix, orthogonalising the physical space if an overlap is given.
+
+        Args:
+            physical: The matrix to use for the physical space part of the supermatrix.
+            chempot: Whether to include the chemical potential in the supermatrix.
+            overlap: The overlap matrix for the physical space, or ``None`` for the identity.
+
+        Returns:
+            The supermatrix, and the matrix that undoes the orthogonalisation of the physical
+            space (``None`` if no overlap was given).
+        """
+        lehmann = self
+        unorth: Array | None = None
+        if overlap is not None:
+            orth = util.matrix_power(overlap, -0.5, hermitian=False)[0]
+            unorth = util.matrix_power(overlap, 0.5, hermitian=False)[0]
+            physical = orth @ physical @ orth
+            lehmann = lehmann.rotate_couplings(orth if self.hermitian else (orth, orth.T.conj()))
+
+        if chempot is True:
+            chempot = self.chempot
+        else:
+            chempot = float(chempot)
+
+        return lehmann.matrix(physical, chempot=chempot), unorth
+
+    def eigenvalues_of_matrix(
+        self, physical: Array, chempot: bool | float = False, overlap: Array | None = None
+    ) -> Array:
+        """Get the eigenvalues of the supermatrix, without computing its eigenvectors.
+
+        Args:
+            physical: The matrix to use for the physical space part of the supermatrix.
+            chempot: Whether to include the chemical potential in the supermatrix. If ``True``, the
+                chemical potential from :attr:`chempot` is used. If a float is given, that value is
+                used.
+            overlap: The overlap matrix to use for the physical space part of the supermatrix. If
+                ``None``, the identity matrix is used.
+
+        Returns:
+            The eigenvalues of the supermatrix, in ascending order.
+
+        Note:
+            The eigenvalues agree with those from :meth:`diagonalise_matrix`, which is the more
+            expensive route because it also back-transforms the eigenvectors. Use this where only
+            the spectrum is wanted, such as reporting its extent.
+        """
+        matrix, _ = self._orthogonalised_matrix(physical, chempot=chempot, overlap=overlap)
+        if self.hermitian:
+            return np.linalg.eigvalsh(matrix)
+        return np.sort(np.linalg.eigvals(matrix))
+
     def diagonalise_matrix(
         self, physical: Array, chempot: bool | float = False, overlap: Array | None = None
     ) -> tuple[Array, Array]:
@@ -620,22 +682,9 @@ class Lehmann(BaseRepresentation):
             generalised eigenvalue decomposition of the supermatrix, with the overlap in the
             auxiliary space assumed to be the identity.
         """
-        # Orthogonalise the physical space if overlap is provided
-        lehmann = self
-        if overlap is not None:
-            orth = util.matrix_power(overlap, -0.5, hermitian=False)[0]
-            unorth = util.matrix_power(overlap, 0.5, hermitian=False)[0]
-            physical = orth @ physical @ orth
-            lehmann = lehmann.rotate_couplings(orth if self.hermitian else (orth, orth.T.conj()))
-
-        # Get the chemical potential
-        if chempot is True:
-            chempot = self.chempot
-        else:
-            chempot = float(chempot)
+        matrix, unorth = self._orthogonalised_matrix(physical, chempot=chempot, overlap=overlap)
 
         # Diagonalise the supermatrix
-        matrix = lehmann.matrix(physical, chempot=chempot)
         if self.hermitian:
             eigvals, eigvecs = util.eig(matrix, hermitian=True)
             if overlap is not None:
