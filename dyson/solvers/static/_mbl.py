@@ -291,8 +291,11 @@ class BaseMBL(StaticSolver):
     def __post_kernel__(self) -> None:
         """Hook called after :meth:`kernel`."""
         assert self.result is not None
-        emin = printing.format_float(self.result.eigvals.min())
-        emax = printing.format_float(self.result.eigvals.max())
+        # `spectrum` rather than `eigvals`: the result defers its eigendecomposition until an
+        # eigenvector is wanted, and reporting the extent of the spectrum does not want one.
+        spectrum = self.result.spectrum
+        emin = printing.format_float(spectrum.min())
+        emax = printing.format_float(spectrum.max())
         console.print(
             f"Found [output]{self.result.neig}[/output] roots between [output]{emin}[/output] and "
             f"[output]{emax}[/output]."
